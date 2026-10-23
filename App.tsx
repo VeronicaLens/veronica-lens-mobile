@@ -8,12 +8,16 @@ export default function App() {
   return (
     <View style={styles.container}>
       <StatusBar style="dark" />
+
       <Text style={styles.title}>Veronica Lens</Text>
+
       <Text>Observações: {count}</Text>
+
       <Button
         title="Registrar observação"
         onPress={() => setCount(current => current + 1)}
       />
+      
     </View>
   );
 }

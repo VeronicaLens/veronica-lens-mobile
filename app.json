@@ -21,6 +21,12 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "60f28b96-eadb-4939-ad56-ce5cb4279b5a"
+      }
+    },
+    "owner": "eulorenzini"
   }
 }

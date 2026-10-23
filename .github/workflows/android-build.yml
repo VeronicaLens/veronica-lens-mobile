@@ -1,0 +1,76 @@
+name: Android builds
+
+on:
+  push:
+    branches:
+      - qual
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-build-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build Android (${{ github.ref_name == 'main' && 'AAB' || 'APK' }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check Expo dependency compatibility
+        run: npx expo install --check
+
+      - name: Build Android app with EAS
+        run: |
+          if [ "$GITHUB_REF_NAME" = "main" ]; then
+            PROFILE=production
+            EXTENSION=aab
+          else
+            PROFILE=preview
+            EXTENSION=apk
+          fi
+
+          npx --yes eas-cli@latest build \
+            --platform android \
+            --profile "$PROFILE" \
+            --non-interactive \
+            --wait \
+            --json \
+            --message "GitHub commit $GITHUB_SHA" \
+            > "$RUNNER_TEMP/eas-build.json"
+
+          BUILD_ID="$(node -e "const [build] = require(process.argv[1]); if (!build?.id) process.exit(1); process.stdout.write(build.id)" "$RUNNER_TEMP/eas-build.json")"
+          npx --yes eas-cli@latest build:download \
+            --build-id "$BUILD_ID" \
+            --non-interactive \
+            --json \
+            > "$RUNNER_TEMP/eas-download.json"
+
+          BUILD_PATH="$(node -e "const result = require(process.argv[1]); if (!result?.path) process.exit(1); process.stdout.write(result.path)" "$RUNNER_TEMP/eas-download.json")"
+          mkdir -p artifacts
+          cp "$BUILD_PATH" "artifacts/veronica-lens-${GITHUB_REF_NAME}-${GITHUB_SHA:0:7}.${EXTENSION}"
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Upload Android build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: veronica-lens-${{ github.ref_name }}-${{ github.sha }}
+          path: artifacts/*
+          if-no-files-found: error
+          retention-days: 30

@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   build:
-    name: Build Android (${{ github.ref_name == 'main' && 'AAB' || 'APK' }})
+    name: Build Android (${{ github.ref_name == 'main' && 'AAB' || 'Development' }})
     runs-on: ubuntu-latest
     timeout-minutes: 180
     steps:
@@ -41,7 +41,7 @@ jobs:
             PROFILE=production
             EXTENSION=aab
           else
-            PROFILE=preview
+            PROFILE=development
             EXTENSION=apk
           fi
 
@@ -55,6 +55,26 @@ jobs:
             > "$RUNNER_TEMP/eas-build.json"
 
           BUILD_ID="$(node -e "const [build] = require(process.argv[1]); if (!build?.id) process.exit(1); process.stdout.write(build.id)" "$RUNNER_TEMP/eas-build.json")"
+          BUILD_URL="$(node -e "const {expo}=require('./app.json'); if (!expo.owner || !expo.slug) throw new Error('Missing Expo owner/slug'); process.stdout.write('https://expo.dev/accounts/'+encodeURIComponent(expo.owner)+'/projects/'+encodeURIComponent(expo.slug)+'/builds/'+encodeURIComponent(process.argv[1]))" "$BUILD_ID")"
+          echo "Build and installation page: $BUILD_URL"
+          {
+            echo "## Android build: $PROFILE"
+            echo ""
+            echo "[Open build and installation page]($BUILD_URL)"
+            echo ""
+            if [ "$PROFILE" = "development" ]; then
+              echo "Install this development build on Android, then run \`npm run start:dev\` locally."
+              echo "The installation QR code is in the build step logs and on the EAS page above."
+            else
+              echo "Download the AAB from Artifacts below for manual upload to Google Play Console."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$PROFILE" = "development" ]; then
+            npx --yes qrcode@1.5.4 --type utf8 \
+              --output "$RUNNER_TEMP/install-qr.txt" "$BUILD_URL"
+            cat "$RUNNER_TEMP/install-qr.txt"
+          fi
+
           npx --yes eas-cli@latest build:download \
             --build-id "$BUILD_ID" \
             --non-interactive \

@@ -84,3 +84,90 @@ incrementado remotamente pelo EAS.
 Nao use `npm audit fix --force`: ele pode trocar a versao principal do Expo ou
 do React Native sem alinhar as demais dependencias. Revise os alertas antes de
 atualizar e use `npx expo install --check` para verificar a compatibilidade.
+
+## Arquitetura (Feature-Sliced Design)
+
+O app usa Expo Router com organizacao Feature-Sliced Design (FSD):
+
+```text
+src/
+  app/                    # Somente rotas Expo Router e _layout.tsx
+  core/                   # Camada app do FSD: providers, estilos globais, store
+    providers/            # AppProviders (estilos globais, StatusBar...)
+    styles/global.css     # Diretivas Tailwind
+    index.ts              # API publica da camada
+  screens/                # Telas completas (camada pages do FSD)
+    <tela>/ui/            # Componentes da tela
+    <tela>/index.ts       # API publica da tela
+  features/               # Funcionalidades de negocio
+    auth/
+      api/                # Chamadas a API Veronica Lens
+      lib/                # Funcoes puras, sem React
+      model/              # Tipos, hooks e estado
+      index.ts            # API publica da feature
+  shared/                 # Codigo reutilizavel sem regra de negocio
+    ui/                   # Componentes base (Button, Screen...)
+```
+
+- O Expo Router transforma **todo arquivo `.ts`/`.tsx` em `src/app/`** em rota.
+  Por isso providers, stores e estilos ficam em `src/core/`, nunca em `src/app/`.
+  Mudar a raiz das rotas e desaconselhado pela documentacao do Expo.
+- Cada arquivo em `src/app/` apenas reexporta uma tela:
+  `export { HomeScreen as default } from '@/screens/home';`.
+  O `_layout.tsx` compoe `AppProviders` de `@/core` com o navegador.
+- Uma camada importa somente camadas abaixo dela:
+  `app -> core -> screens -> features -> shared`.
+- Fora da propria fatia, importe sempre pelo `index.ts` publico
+  (`@/features/auth`, `@/shared/ui`), nunca por caminhos internos.
+- A camada `screens` substitui o nome `pages` do FSD para nao confundir com
+  as rotas do Expo Router.
+
+## Estilizacao (NativeWind)
+
+Os componentes usam Tailwind via NativeWind 4 (Tailwind CSS 3), com a prop
+`className`. Evite `StyleSheet.create` em codigo novo.
+
+- `tailwind.config.js`: tema (cores `primary`, `background`, `foreground`,
+  `muted`, `danger`) e caminhos analisados em `src/`.
+- `src/core/styles/global.css`: diretivas Tailwind, importadas por
+  `AppProviders`.
+- `babel.config.js` e `metro.config.js`: integracao do NativeWind.
+- `nativewind-env.d.ts`: tipos da prop `className`.
+
+Prefira as cores do tema (`bg-primary`, `text-foreground`) a valores fixos.
+Componentes reutilizaveis ficam em `src/shared/ui`.
+
+O NativeWind depende do Reanimated e do Worklets, que tem codigo nativo.
+Depois de instalar ou atualizar essas dependencias, gere uma nova development
+build. Ao alterar `tailwind.config.js`, `babel.config.js` ou `metro.config.js`,
+reinicie o Metro limpando o cache: `npx expo start --dev-client --clear`.
+
+## Navegacao e deep links e `veronicalens`. Ele so passa a funcionar depois de gerar e
+instalar uma nova development build; o Expo Go nao registra esse scheme.
+
+### Recuperacao de senha
+
+O email de recuperacao abre `veronicalens://auth/reset-password`. No fluxo
+implicito do Supabase, os tokens da sessao de recuperacao chegam depois do `#`.
+
+- `src/app/auth/reset-password.tsx`: rota.
+- `src/screens/reset-password/`: tela.
+- `src/features/auth/model/useRecoveryLink.ts`: le a URL com `useLinkingURL()`.
+- `src/features/auth/lib/parseRecoveryLink.ts`: valida tokens e erros do link.
+
+Os tokens ficam apenas em memoria: nao os registre em logs, nao os exiba e nao
+os grave em armazenamento persistente. A definicao da nova senha, chamando
+`PUT /api/v1/auth/password` da API, ainda nao esta implementada.
+
+Para testar sem enviar email, com a development build aberta e conectada ao
+servidor local, use tokens ficticios:
+
+```powershell
+adb shell "am start -W -a android.intent.action.VIEW -d 'veronicalens://auth/reset-password#access_token=fake&refresh_token=fake&expires_at=1893456000&token_type=bearer&type=recovery' com.bialorenzini.veronicalens"
+```
+
+As aspas simples dentro das aspas duplas impedem que o shell do Android
+interprete o `&`. Para simular um link expirado, troque o trecho apos `#` por
+`error=access_denied&error_code=otp_expired`.
+
+Nunca use tokens reais em comandos, capturas de tela ou issues.

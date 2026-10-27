@@ -1,17 +1,16 @@
 import { Stack } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
 
-import { AppProviders } from '@/core';
+import '../../global.css';
 
 export default function RootLayout() {
   return (
-    <AppProviders>
+    <>
+      <StatusBar style="light" />
       <Stack>
         <Stack.Screen name="index" options={{ title: 'Veronica Lens' }} />
-        <Stack.Screen
-          name="auth/reset-password"
-          options={{ title: 'Redefinir senha' }}
-        />
+        <Stack.Screen name="auth/reset-password" options={{ title: 'Redefinir senha' }} />
       </Stack>
-    </AppProviders>
+    </>
   );
 }

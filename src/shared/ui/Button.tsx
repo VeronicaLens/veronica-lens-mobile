@@ -1,22 +1,61 @@
-import { Pressable, Text, type PressableProps } from 'react-native';
+import { Lucide, type LucideIconName } from '@react-native-vector-icons/lucide';
+import { ActivityIndicator, Pressable, Text } from 'react-native';
 
-interface ButtonProps extends Omit<PressableProps, 'children'> {
-  title: string;
+import { theme } from '../config/index.ts';
+
+interface ButtonProps {
+  label: string;
+  onPress(): void;
+  busy?: boolean;
+  disabled?: boolean;
+  icon?: LucideIconName;
+  variant?: 'primary' | 'secondary' | 'ghost';
 }
 
-export function Button({ title, disabled, ...props }: ButtonProps) {
+export function Button({
+  label,
+  onPress,
+  busy = false,
+  disabled = false,
+  icon,
+  variant = 'primary',
+}: ButtonProps) {
+  const isDisabled = disabled || busy;
+  const primary = variant === 'primary';
+  const secondary = variant === 'secondary';
+
   return (
     <Pressable
       accessibilityRole="button"
-      disabled={disabled}
-      className={`items-center rounded-xl bg-primary px-5 py-3 active:opacity-80 ${
-        disabled ? 'opacity-50' : ''
-      }`}
-      {...props}
+      accessibilityState={{ busy, disabled: isDisabled }}
+      className={`h-11 min-h-11 flex-row items-center justify-center gap-2 rounded-pill border px-5 active:opacity-80 ${
+        primary
+          ? 'border-brand bg-brand'
+          : secondary
+            ? 'border-border bg-surface-2'
+            : 'border-transparent bg-canvas'
+      } ${isDisabled ? 'opacity-60' : ''}`}
+      disabled={isDisabled}
+      onPress={onPress}
     >
-      <Text className="text-base font-semibold text-primary-foreground">
-        {title}
-      </Text>
+      {busy ? (
+        <ActivityIndicator color={primary ? theme.colors.text : theme.colors.accent} />
+      ) : (
+        <>
+          <Text
+            className={`font-label text-xs ${primary || secondary ? 'text-ink' : 'text-accent'}`}
+          >
+            {label}
+          </Text>
+          {icon ? (
+            <Lucide
+              color={primary || secondary ? theme.colors.text : theme.colors.accent}
+              name={icon}
+              size={15}
+            />
+          ) : null}
+        </>
+      )}
     </Pressable>
   );
 }

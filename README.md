@@ -143,6 +143,7 @@ build. Ao alterar `tailwind.config.js`, `babel.config.js` ou `metro.config.js`,
 reinicie o Metro limpando o cache: `npx expo start --dev-client --clear`.
 
 ## Navegacao e deep links e `veronicalens`. Ele so passa a funcionar depois de gerar e
+
 instalar uma nova development build; o Expo Go nao registra esse scheme.
 
 ### Recuperacao de senha

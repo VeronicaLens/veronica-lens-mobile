@@ -1,3 +1,3 @@
-export { parseRecoveryLink } from './lib/parseRecoveryLink';
-export { useRecoveryLink } from './model/useRecoveryLink';
-export type { RecoveryLink, RecoverySession } from './model/types';
+export { getRecoveryAccessToken } from './lib/recovery-link.ts';
+export { useAuthSession } from './model/use-auth-session.ts';
+export type { AuthStatus } from './model/use-auth-session.ts';

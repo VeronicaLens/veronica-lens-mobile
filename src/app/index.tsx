@@ -1,4 +1,5 @@
 import * as Linking from 'expo-linking';
+import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 
 import { getRecoveryAccessToken, useAuthSessionContext } from '../features/auth/index.ts';
@@ -8,6 +9,7 @@ import { LoadingScreen } from '../widgets/loading-screen/index.ts';
 
 export default function IndexScreen() {
   const auth = useAuthSessionContext();
+  const router = useRouter();
   const [recoveryAccessToken, setRecoveryAccessToken] = useState<string | null>(null);
 
   useEffect(() => {
@@ -28,8 +30,8 @@ export default function IndexScreen() {
         displayName={auth.session.user.displayName}
         email={auth.session.user.email}
         onOpenCamera={() => undefined}
-        onOpenEvent={() => undefined}
-        onOpenEvents={() => undefined}
+        onOpenEvent={(eventId) => router.push(`/events/${eventId}`)}
+        onOpenEvents={() => router.push('/events')}
         onOpenHistory={() => undefined}
         onOpenConditionSimulation={() => undefined}
       />

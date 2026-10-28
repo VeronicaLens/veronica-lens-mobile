@@ -37,7 +37,7 @@ export async function signInWithGoogle(
   request: Request = apiRequest,
 ): Promise<Session> {
   const body: GoogleSignInRequest = { idToken };
-  return (await jsonRequest<SessionResponse>('/auth/oauth/google', body, request)).data;
+  return (await jsonRequest<SessionResponse>('/auth/google', body, request)).data;
 }
 
 export async function refreshSession(

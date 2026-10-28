@@ -125,7 +125,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-  /auth/oauth/google:
+  /auth/google:
     post:
       security: []
       tags: [Authentication]

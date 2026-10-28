@@ -38,7 +38,7 @@ yarn-error.*
 # local env files
 .env*.local
 
-# Firebase config with Android credentials
+# Firebase config with Android credentials (injected on EAS via GOOGLE_SERVICES_JSON file env var)
 google-services.json
 
 # typescript

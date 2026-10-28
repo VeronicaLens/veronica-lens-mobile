@@ -18,8 +18,7 @@
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "com.veronicalens.app",
-      "googleServicesFile": "./google-services.json"
+      "package": "com.veronicalens.app"
     },
     "web": {
       "favicon": "./assets/favicon.png"

@@ -668,7 +668,7 @@ export type SignInWithGoogleData = {
     body: GoogleSignInRequest;
     path?: never;
     query?: never;
-    url: '/auth/oauth/google';
+    url: '/auth/google';
 };
 
 export type SignInWithGoogleErrors = {

@@ -16,6 +16,8 @@ const tabs: { name: string; title: string; icon: LucideIconName }[] = [
   { name: 'profile', title: 'Perfil', icon: 'user-round' },
 ];
 
+const hiddenTabs = ['events/index', 'events/[id]'];
+
 export default function TabsLayout() {
   const auth = useAuthSessionContext();
   const [recoveryAccessToken, setRecoveryAccessToken] = useState<string | null>(null);
@@ -65,6 +67,9 @@ export default function TabsLayout() {
             tabBarIcon: ({ color }) => <Lucide color={color} name={tab.icon} size={19} />,
           }}
         />
+      ))}
+      {hiddenTabs.map((name) => (
+        <Tabs.Screen key={name} name={name} options={{ href: null }} />
       ))}
     </Tabs>
   );

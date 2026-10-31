@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 
 import type { ObservationHistoryItem } from '../../../shared/api/index.ts';
+import { useRequestGuard } from '../../../shared/lib/index.ts';
 import {
   deleteObservation,
   deleteObservationPhoto,
@@ -16,21 +17,29 @@ export function useObservationHistory(accessToken: string) {
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const guard = useRequestGuard();
 
   const refresh = useCallback(async () => {
+    const request = guard.begin();
     setLoading(true);
     setError(null);
     try {
       const response = await getObservationHistory(accessToken, 1, pageSize);
+      if (!guard.isCurrent(request)) return;
       setObservations(response.data);
       setPage(response.page);
       setHasMore(response.hasMore);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Não foi possível carregar sua galeria.');
+      if (guard.isCurrent(request)) {
+        setError(cause instanceof Error ? cause.message : 'Não foi possível carregar sua galeria.');
+      }
     } finally {
-      setLoading(false);
+      if (guard.isCurrent(request)) {
+        setLoading(false);
+        setLoadingMore(false);
+      }
     }
-  }, [accessToken]);
+  }, [accessToken, guard]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- load remote history when session changes.
@@ -39,20 +48,24 @@ export function useObservationHistory(accessToken: string) {
 
   const loadMore = useCallback(async () => {
     if (loading || loadingMore || !hasMore) return;
+    const request = guard.current();
     setLoadingMore(true);
     try {
       const response = await getObservationHistory(accessToken, page + 1, pageSize);
+      if (!guard.isCurrent(request)) return;
       setObservations((current) => [...current, ...response.data]);
       setPage(response.page);
       setHasMore(response.hasMore);
     } catch (cause) {
-      setError(
-        cause instanceof Error ? cause.message : 'Não foi possível carregar mais observações.',
-      );
+      if (guard.isCurrent(request)) {
+        setError(
+          cause instanceof Error ? cause.message : 'Não foi possível carregar mais observações.',
+        );
+      }
     } finally {
-      setLoadingMore(false);
+      if (guard.isCurrent(request)) setLoadingMore(false);
     }
-  }, [accessToken, hasMore, loading, loadingMore, page]);
+  }, [accessToken, guard, hasMore, loading, loadingMore, page]);
 
   const removePhoto = useCallback(
     async (observationId: string, photoId: string) => {

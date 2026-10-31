@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 
 import type { Profile, UpdateProfileRequest } from '../../../shared/api/index.ts';
+import { useRequestGuard } from '../../../shared/lib/index.ts';
 import { getProfile, updateProfile } from '../api/profile-api.ts';
 import { uploadProfileAvatar } from '../api/profile-avatar-api.ts';
 
@@ -9,18 +10,23 @@ export function useProfile(accessToken: string) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const guard = useRequestGuard();
 
   const load = useCallback(async () => {
+    const request = guard.begin();
     setLoading(true);
     setError(null);
     try {
-      setProfile(await getProfile(accessToken));
+      const loaded = await getProfile(accessToken);
+      if (guard.isCurrent(request)) setProfile(loaded);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Não foi possível carregar seu perfil.');
+      if (guard.isCurrent(request)) {
+        setError(cause instanceof Error ? cause.message : 'Não foi possível carregar seu perfil.');
+      }
     } finally {
-      setLoading(false);
+      if (guard.isCurrent(request)) setLoading(false);
     }
-  }, [accessToken]);
+  }, [accessToken, guard]);
 
   useEffect(() => {
     // The effect intentionally starts synchronization with the remote profile.

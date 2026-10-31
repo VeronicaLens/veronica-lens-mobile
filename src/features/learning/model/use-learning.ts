@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import type { LearningTrack, Lesson, LessonProgress } from '../../../shared/api/index.ts';
+import { useRequestGuard } from '../../../shared/lib/index.ts';
 import {
   getLearningProgress,
   getLearningTracks,
@@ -15,8 +16,10 @@ export function useLearning(accessToken: string) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lessonsLoading, setLessonsLoading] = useState<string | null>(null);
+  const guard = useRequestGuard();
 
   const load = useCallback(async () => {
+    const request = guard.begin();
     setLoading(true);
     setError(null);
     try {
@@ -24,6 +27,7 @@ export function useLearning(accessToken: string) {
         getLearningTracks(accessToken),
         getLearningProgress(accessToken),
       ]);
+      if (!guard.isCurrent(request)) return;
       setTracks(tracksResult);
       setProgress(progressResult);
 
@@ -33,13 +37,16 @@ export function useLearning(accessToken: string) {
           return [track.id, lessons] as const;
         }),
       );
+      if (!guard.isCurrent(request)) return;
       setLessonsByTrack(Object.fromEntries(lessonsEntries));
     } catch {
-      setError('Não foi possível carregar as trilhas de aprendizado.');
+      if (guard.isCurrent(request)) {
+        setError('Não foi possível carregar as trilhas de aprendizado.');
+      }
     } finally {
-      setLoading(false);
+      if (guard.isCurrent(request)) setLoading(false);
     }
-  }, [accessToken]);
+  }, [accessToken, guard]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- load remote tracks when session changes.

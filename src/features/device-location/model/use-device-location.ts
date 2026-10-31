@@ -1,7 +1,8 @@
 import * as Location from 'expo-location';
 import { useCallback, useEffect, useState } from 'react';
 
-import type { DeviceLocationState } from './location.types.ts';
+import { readFreshLocation, storeLocation } from './location-cache.ts';
+import type { DeviceLocation, DeviceLocationState } from './location.types.ts';
 
 const initialState: DeviceLocationState = {
   status: 'requesting-permission',
@@ -9,8 +10,17 @@ const initialState: DeviceLocationState = {
   fallbackMessage: null,
 };
 
+function activeState(location: DeviceLocation): DeviceLocationState {
+  return { status: 'active', location, fallbackMessage: null };
+}
+
+function createInitialState(enabled: boolean): DeviceLocationState {
+  const cached = enabled ? readFreshLocation() : null;
+  return cached ? activeState(cached) : initialState;
+}
+
 export function useDeviceLocation(enabled = true) {
-  const [state, setState] = useState<DeviceLocationState>(initialState);
+  const [state, setState] = useState<DeviceLocationState>(() => createInitialState(enabled));
   const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
@@ -18,6 +28,13 @@ export function useDeviceLocation(enabled = true) {
     let disposed = false;
 
     const locate = async () => {
+      // A retry always asks the device again; first loads reuse a recent shared fix.
+      const cached = attempt === 0 ? readFreshLocation() : null;
+      if (cached) {
+        setState(activeState(cached));
+        return;
+      }
+
       setState(initialState);
       try {
         const permission = await Location.requestForegroundPermissionsAsync();
@@ -48,19 +65,15 @@ export function useDeviceLocation(enabled = true) {
         const position = await Location.getCurrentPositionAsync({
           accuracy: Location.Accuracy.Balanced,
         });
-        if (!disposed) {
-          setState({
-            status: 'active',
-            location: {
-              latitudeDegrees: position.coords.latitude,
-              longitudeDegrees: position.coords.longitude,
-              elevationMeters: position.coords.altitude ?? 0,
-              accuracyMeters: position.coords.accuracy,
-              timestamp: position.timestamp,
-            },
-            fallbackMessage: null,
-          });
-        }
+        const location: DeviceLocation = {
+          latitudeDegrees: position.coords.latitude,
+          longitudeDegrees: position.coords.longitude,
+          elevationMeters: position.coords.altitude ?? 0,
+          accuracyMeters: position.coords.accuracy,
+          timestamp: position.timestamp,
+        };
+        storeLocation(location);
+        if (!disposed) setState(activeState(location));
       } catch {
         if (!disposed) {
           setState({

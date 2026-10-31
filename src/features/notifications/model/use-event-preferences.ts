@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 
 import type { EventPreference } from '../../../shared/api/index.ts';
+import { useRequestGuard } from '../../../shared/lib/index.ts';
 import {
   getNotificationPreferences,
   updateNotificationPreferences,
@@ -16,18 +17,23 @@ export function useEventPreferences(accessToken: string) {
   const [preferences, setPreferences] = useState<EventPreference[]>(defaults);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const guard = useRequestGuard();
 
   const load = useCallback(async () => {
+    const request = guard.begin();
     try {
       const saved = await getNotificationPreferences(accessToken);
+      if (!guard.isCurrent(request)) return;
       const savedByType = new Map(saved.map((preference) => [preference.eventType, preference]));
       setPreferences(
         defaults.map((preference) => savedByType.get(preference.eventType) ?? preference),
       );
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Não foi possível carregar alertas.');
+      if (guard.isCurrent(request)) {
+        setError(cause instanceof Error ? cause.message : 'Não foi possível carregar alertas.');
+      }
     }
-  }, [accessToken]);
+  }, [accessToken, guard]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- synchronize event alerts with the authenticated account.

@@ -1,16 +1,16 @@
 import type {
+  DataResponse,
   GoogleSignInRequest,
-  MessageResponse,
   PasswordRecoveryRequest,
   PasswordUpdateRequest,
   RefreshSessionRequest,
   Session,
-  SessionResponse,
-  SignInRequestWritable,
-  SignUpRequestWritable,
-  SignUpResponse,
+  SignInRequest,
+  SignUpRequest,
+  SignUpResult,
 } from '../../../shared/api/index.ts';
 import { apiRequest } from '../../../shared/api/index.ts';
+import type { RecoverySession } from '../lib/recovery-link.ts';
 
 type Request = <T>(path: string, init?: RequestInit) => Promise<T>;
 
@@ -19,17 +19,17 @@ function jsonRequest<T>(path: string, body: unknown, request: Request): Promise<
 }
 
 export async function signUp(
-  input: SignUpRequestWritable,
+  input: SignUpRequest,
   request: Request = apiRequest,
-): Promise<SignUpResponse['data']> {
-  return (await jsonRequest<SignUpResponse>('/auth/sign-up', input, request)).data;
+): Promise<SignUpResult> {
+  return (await jsonRequest<DataResponse<SignUpResult>>('/auth/sign-up', input, request)).data;
 }
 
 export async function signIn(
-  input: SignInRequestWritable,
+  input: SignInRequest,
   request: Request = apiRequest,
 ): Promise<Session> {
-  return (await jsonRequest<SessionResponse>('/auth/sign-in', input, request)).data;
+  return (await jsonRequest<DataResponse<Session>>('/auth/sign-in', input, request)).data;
 }
 
 export async function signInWithGoogle(
@@ -37,7 +37,7 @@ export async function signInWithGoogle(
   request: Request = apiRequest,
 ): Promise<Session> {
   const body: GoogleSignInRequest = { idToken };
-  return (await jsonRequest<SessionResponse>('/auth/google', body, request)).data;
+  return (await jsonRequest<DataResponse<Session>>('/auth/google', body, request)).data;
 }
 
 export async function refreshSession(
@@ -45,7 +45,7 @@ export async function refreshSession(
   request: Request = apiRequest,
 ): Promise<Session> {
   const body: RefreshSessionRequest = { refreshToken };
-  return (await jsonRequest<SessionResponse>('/auth/refresh', body, request)).data;
+  return (await jsonRequest<DataResponse<Session>>('/auth/refresh', body, request)).data;
 }
 
 export async function requestPasswordRecovery(
@@ -53,8 +53,12 @@ export async function requestPasswordRecovery(
   request: Request = apiRequest,
 ): Promise<string> {
   const body: PasswordRecoveryRequest = { email };
-  return (await jsonRequest<MessageResponse>('/auth/password/recovery', body, request)).data
-    .message;
+  const response = await jsonRequest<DataResponse<{ message: string }>>(
+    '/auth/password/recovery',
+    body,
+    request,
+  );
+  return response.data.message;
 }
 
 export async function signOut(session: Session, request: Request = apiRequest): Promise<void> {
@@ -65,13 +69,14 @@ export async function signOut(session: Session, request: Request = apiRequest): 
 }
 
 export async function updatePassword(
-  accessToken: string,
+  recovery: RecoverySession,
   password: string,
   request: Request = apiRequest,
 ): Promise<void> {
-  const body: PasswordUpdateRequest = { password };
-  await request<void>('/auth/password/update', {
-    method: 'POST',
+  const { accessToken, refreshToken } = recovery;
+  const body: PasswordUpdateRequest = { password, refreshToken };
+  await request<unknown>('/auth/password', {
+    method: 'PUT',
     headers: { Authorization: `Bearer ${accessToken}` },
     body: JSON.stringify(body),
   });

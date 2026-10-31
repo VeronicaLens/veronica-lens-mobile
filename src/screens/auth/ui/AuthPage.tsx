@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { GoogleSignInCancelledError } from '../../../features/auth/index.ts';
+import { GoogleSignInCancelledError, type RecoverySession } from '../../../features/auth/index.ts';
 import { ApiError, type SignUpResult } from '../../../shared/api/index.ts';
 import { theme } from '../../../shared/config/index.ts';
 import { Button, TextField } from '../../../shared/ui/index.ts';
@@ -27,12 +27,12 @@ const LOGO_ASPECT_RATIO = 1600 / 533;
 type Mode = 'sign-in' | 'sign-up' | 'recovery' | 'reset';
 
 interface AuthPageProps {
-  recoveryAccessToken: string | null;
+  recovery: RecoverySession | null;
   onSignIn(email: string, password: string): Promise<void>;
   onGoogleSignIn(): Promise<void>;
   onSignUp(email: string, password: string, displayName: string): Promise<SignUpResult>;
   onRequestRecovery(email: string): Promise<string>;
-  onUpdatePassword(accessToken: string, password: string): Promise<void>;
+  onUpdatePassword(recovery: RecoverySession, password: string): Promise<void>;
   onResetComplete(): void;
 }
 
@@ -41,8 +41,16 @@ function friendlyMessage(error: unknown): string {
     const messages: Record<string, string> = {
       AUTH_INVALID_CREDENTIALS: 'E-mail ou senha inválidos.',
       AUTH_EMAIL_NOT_CONFIRMED: 'Confirme seu e-mail antes de entrar.',
-      AUTH_ACCOUNT_EXISTS: 'Já existe uma conta para este e-mail.',
+      AUTH_REQUEST_REJECTED:
+        'Não foi possível concluir. Revise o e-mail e use uma senha mais forte.',
+      AUTH_PASSWORD_REJECTED:
+        'A nova senha foi recusada. Escolha uma senha diferente e mais forte.',
+      AUTH_GOOGLE_TOKEN_INVALID: 'Não foi possível validar sua conta Google. Tente novamente.',
+      AUTH_TOKEN_INVALID: 'O link expirou. Solicite uma nova recuperação de senha.',
+      AUTH_SESSION_INVALID: 'Sua sessão expirou. Entre novamente.',
+      AUTH_UNAVAILABLE: 'O serviço de autenticação está indisponível. Tente em instantes.',
       AUTH_RATE_LIMITED: 'Muitas tentativas. Aguarde alguns minutos.',
+      REQUEST_TIMEOUT: 'A conexão demorou demais. Tente novamente.',
       VALIDATION_ERROR: 'Revise os dados informados.',
     };
     return messages[error.code] ?? 'Não foi possível concluir a solicitação.';
@@ -71,7 +79,7 @@ const descriptions: Record<Mode, string> = {
 };
 
 export function AuthPage({
-  recoveryAccessToken,
+  recovery,
   onSignIn,
   onGoogleSignIn,
   onSignUp,
@@ -79,7 +87,7 @@ export function AuthPage({
   onUpdatePassword,
   onResetComplete,
 }: AuthPageProps) {
-  const [mode, setMode] = useState<Mode>(recoveryAccessToken ? 'reset' : 'sign-in');
+  const [mode, setMode] = useState<Mode>(recovery ? 'reset' : 'sign-in');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
@@ -128,8 +136,8 @@ export function AuthPage({
       } else if (mode === 'recovery') {
         await onRequestRecovery(email.trim());
         setMessage('Se a conta existir, enviaremos as instruções de recuperação.');
-      } else if (recoveryAccessToken) {
-        await onUpdatePassword(recoveryAccessToken, password);
+      } else if (recovery) {
+        await onUpdatePassword(recovery, password);
         onResetComplete();
         changeMode('sign-in');
         setMessage('Senha atualizada. Entre novamente com sua nova senha.');

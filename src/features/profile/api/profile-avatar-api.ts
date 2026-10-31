@@ -1,6 +1,6 @@
 import * as FileSystem from 'expo-file-system/legacy';
 
-import type { Profile, ProfileResponse } from '../../../shared/api/index.ts';
+import type { DataResponse, Profile } from '../../../shared/api/index.ts';
 import { getPublicEnvironment } from '../../../shared/config/index.ts';
 
 export async function uploadProfileAvatar(
@@ -20,5 +20,5 @@ export async function uploadProfileAvatar(
   if (response.status < 200 || response.status >= 300) {
     throw new Error(`Avatar upload failed with status ${response.status}`);
   }
-  return (JSON.parse(response.body) as ProfileResponse).data;
+  return (JSON.parse(response.body) as DataResponse<{ profile: Profile }>).data.profile;
 }

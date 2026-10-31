@@ -3,7 +3,11 @@ import * as Linking from 'expo-linking';
 import { Tabs, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 
-import { getRecoveryAccessToken, useAuthSessionContext } from '../../features/auth/index.ts';
+import {
+  getRecoverySession,
+  useAuthSessionContext,
+  type RecoverySession,
+} from '../../features/auth/index.ts';
 import { useNotificationBootstrap } from '../../features/notifications/index.ts';
 import { ProfileDisplayNameProvider } from '../../features/profile/index.ts';
 import { AuthPage } from '../../screens/auth/index.ts';
@@ -23,7 +27,7 @@ const hiddenTabs = ['events/index', 'events/[id]', 'conditions'];
 export function TabsLayout() {
   const auth = useAuthSessionContext();
   const router = useRouter();
-  const [recoveryAccessToken, setRecoveryAccessToken] = useState<string | null>(null);
+  const [recovery, setRecovery] = useState<RecoverySession | null>(null);
 
   useNotificationBootstrap({
     accessToken: auth.status === 'authenticated' ? (auth.session?.accessToken ?? null) : null,
@@ -31,7 +35,7 @@ export function TabsLayout() {
     onOpenEvent: (eventId) => router.push(`/events/${eventId}`),
   });
   useEffect(() => {
-    const handleUrl = (url: string | null) => setRecoveryAccessToken(getRecoveryAccessToken(url));
+    const handleUrl = (url: string | null) => setRecovery(getRecoverySession(url));
     void Linking.getInitialURL().then(handleUrl);
     const subscription = Linking.addEventListener('url', ({ url }) => handleUrl(url));
     return () => subscription.remove();
@@ -44,11 +48,11 @@ export function TabsLayout() {
   if (auth.status !== 'authenticated' || !auth.session) {
     return (
       <AuthPage
-        key={recoveryAccessToken ?? 'authentication'}
+        key={recovery?.accessToken ?? 'authentication'}
         onGoogleSignIn={auth.authenticateWithGoogle}
-        recoveryAccessToken={recoveryAccessToken}
+        recovery={recovery}
         onRequestRecovery={auth.requestPasswordRecovery}
-        onResetComplete={() => setRecoveryAccessToken(null)}
+        onResetComplete={() => setRecovery(null)}
         onSignIn={auth.authenticate}
         onSignUp={auth.register}
         onUpdatePassword={auth.updatePassword}

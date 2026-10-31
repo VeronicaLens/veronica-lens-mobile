@@ -1,6 +1,8 @@
 import type {
-  CurrentConditionsForecastResponse,
-  CurrentConditionsResponse,
+  ConditionsForecastResult,
+  CurrentConditionsResult,
+  DataResponse,
+  Observer,
 } from '../../../shared/api/index.ts';
 import { apiRequest } from '../../../shared/api/index.ts';
 
@@ -12,38 +14,37 @@ export interface CurrentConditionsObserver {
   elevationMeters: number;
 }
 
+function toObserver(observer: CurrentConditionsObserver): Observer {
+  return {
+    latitudeDegrees: observer.latitudeDegrees,
+    longitudeDegrees: observer.longitudeDegrees,
+    elevationMeters: observer.elevationMeters,
+  };
+}
+
 export async function getCurrentConditions(
   accessToken: string,
   observer: CurrentConditionsObserver,
   at?: string,
   request: Request = apiRequest,
-): Promise<CurrentConditionsResponse['data']> {
-  const query = new URLSearchParams({
-    latitudeDegrees: String(observer.latitudeDegrees),
-    longitudeDegrees: String(observer.longitudeDegrees),
-    elevationMeters: String(observer.elevationMeters),
-    ...(at ? { at } : {}),
+): Promise<CurrentConditionsResult> {
+  const response = await request<DataResponse<CurrentConditionsResult>>('/conditions/current', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${accessToken}` },
+    body: JSON.stringify({ observer: toObserver(observer), ...(at ? { at } : {}) }),
   });
-  return (
-    await request<CurrentConditionsResponse>(`/conditions/current?${query.toString()}`, {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    })
-  ).data;
+  return response.data;
 }
 
 export async function getConditionsForecast(
   accessToken: string,
   observer: CurrentConditionsObserver,
   request: Request = apiRequest,
-): Promise<CurrentConditionsForecastResponse['data']> {
-  const query = new URLSearchParams({
-    latitudeDegrees: String(observer.latitudeDegrees),
-    longitudeDegrees: String(observer.longitudeDegrees),
-    elevationMeters: String(observer.elevationMeters),
+): Promise<ConditionsForecastResult> {
+  const response = await request<DataResponse<ConditionsForecastResult>>('/conditions/forecast', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${accessToken}` },
+    body: JSON.stringify({ observer: toObserver(observer) }),
   });
-  return (
-    await request<CurrentConditionsForecastResponse>(`/conditions/forecast?${query.toString()}`, {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    })
-  ).data;
+  return response.data;
 }

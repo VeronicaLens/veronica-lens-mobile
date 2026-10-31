@@ -12,12 +12,12 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { useUpcomingEvents } from '../../../features/astronomical-events/index.ts';
-import { useDeviceLocation } from '../../../features/device-location/index.ts';
-import type {
-  UpcomingAstronomicalEvent,
-  UpcomingAstronomicalEventType,
-} from '../../../shared/api/index.ts';
+import {
+  getEventTypeInfo,
+  useEvent,
+  useUpcomingEvents,
+} from '../../../features/astronomical-events/index.ts';
+import type { AstronomicalEvent } from '../../../shared/api/index.ts';
 import { theme } from '../../../shared/config/index.ts';
 import { EventDetailPage } from './EventDetailPage.tsx';
 
@@ -29,25 +29,14 @@ interface EventsPageProps {
   onInitialEventHandled?(): void;
 }
 
-const eventTypeConfig: Record<
-  UpcomingAstronomicalEventType,
-  { icon: LucideIconName; label: string; color: string }
-> = {
-  rise: { icon: 'sunrise', label: 'Nascer', color: theme.colors.info },
-  transit: { icon: 'move-up', label: 'Trânsito', color: theme.colors.accent },
-  set: { icon: 'sunset', label: 'Ocaso', color: theme.colors.event },
-};
+const DEFAULT_PERIOD_DAYS = 30;
+const periods = [7, 30, 90, 365] as const;
 
-const types: { value?: UpcomingAstronomicalEventType; label: string; icon: LucideIconName }[] = [
-  { label: 'Todos', icon: 'grid-2x2' },
-  { value: 'rise', label: 'Nascer', icon: 'sunrise' },
-  { value: 'transit', label: 'Trânsito', icon: 'move-up' },
-  { value: 'set', label: 'Ocaso', icon: 'sunset' },
-];
+function periodLabel(days: number): string {
+  return days === 365 ? '1 ano' : `${days} dias`;
+}
 
-const periods = [1, 7, 14, 30] as const;
-
-function keyExtractor(event: UpcomingAstronomicalEvent): string {
+function keyExtractor(event: AstronomicalEvent): string {
   return event.id;
 }
 
@@ -60,33 +49,36 @@ export function EventsPage({
   initialEventId,
   onInitialEventHandled,
 }: EventsPageProps) {
-  const [periodDays, setPeriodDays] = useState<number>(1);
-  const [type, setType] = useState<UpcomingAstronomicalEventType | undefined>();
+  const [periodDays, setPeriodDays] = useState<number>(DEFAULT_PERIOD_DAYS);
+  const [type, setType] = useState<string | undefined>();
   const [filtersVisible, setFiltersVisible] = useState(false);
   const [searchVisible, setSearchVisible] = useState(false);
   const [search, setSearch] = useState('');
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const insets = useSafeAreaInsets();
-  const location = useDeviceLocation();
-  const effectivePeriodDays = initialEventId ? 30 : periodDays;
-  const events = useUpcomingEvents(accessToken, location.location, effectivePeriodDays, type);
+  const events = useUpcomingEvents(accessToken, periodDays);
+  const linkedEvent = useEvent(accessToken, initialEventId ?? null);
   const normalizedSearch = search.trim().toLocaleLowerCase('pt-BR');
+  const availableTypes = useMemo(
+    () => Array.from(new Set(events.events.map((event) => event.type))).sort(),
+    [events.events],
+  );
   const visibleEvents = useMemo(
     () =>
-      normalizedSearch
-        ? events.events.filter((event) =>
-            event.title.toLocaleLowerCase('pt-BR').includes(normalizedSearch),
-          )
-        : events.events,
-    [events.events, normalizedSearch],
+      events.events.filter(
+        (event) =>
+          (!type || event.type === type) &&
+          (!normalizedSearch || event.title.toLocaleLowerCase('pt-BR').includes(normalizedSearch)),
+      ),
+    [events.events, normalizedSearch, type],
   );
-  const canShowEvents =
-    location.status === 'active' && !events.loading && !events.error && visibleEvents.length > 0;
-  const activeEventId = initialEventId ?? selectedEventId;
-  const activeEvent = events.events.find((event) => event.id === activeEventId) ?? null;
+  const canShowEvents = !events.loading && !events.error && visibleEvents.length > 0;
+  const filtersActive = Boolean(type) || periodDays !== DEFAULT_PERIOD_DAYS;
+  const activeEvent =
+    linkedEvent.event ?? events.events.find((event) => event.id === selectedEventId) ?? null;
   const openEvent = useCallback((eventId: string) => setSelectedEventId(eventId), []);
   const renderItem = useCallback(
-    ({ item }: { item: UpcomingAstronomicalEvent }) => (
+    ({ item }: { item: AstronomicalEvent }) => (
       <View className="px-5">
         <EventCard event={item} onPress={openEvent} />
       </View>
@@ -99,8 +91,6 @@ export function EventsPage({
       <EventDetailPage
         accessToken={accessToken}
         event={activeEvent}
-        location={location.location}
-        meta={events.meta}
         onBack={() => {
           setSelectedEventId(null);
           onInitialEventHandled?.();
@@ -109,22 +99,31 @@ export function EventsPage({
     );
   }
 
-  if (
-    initialEventId &&
-    location.status === 'active' &&
-    !events.loading &&
-    !events.error &&
-    !activeEvent
-  ) {
+  if (initialEventId && (linkedEvent.loading || linkedEvent.notFound || linkedEvent.error)) {
     return (
       <SafeAreaView className="flex-1 bg-canvas px-5 pt-5" edges={['top', 'left', 'right']}>
-        <EmptyState
-          icon="calendar-x"
-          title="Evento não encontrado"
-          message="Este evento não está mais disponível na agenda atual."
-          action="Voltar para eventos"
-          onPress={() => onInitialEventHandled?.()}
-        />
+        {linkedEvent.loading ? (
+          <View className="items-center gap-3 rounded-card bg-surface p-8">
+            <ActivityIndicator color={theme.colors.primary} />
+            <Text className="font-body text-sm text-muted">Abrindo evento...</Text>
+          </View>
+        ) : linkedEvent.notFound ? (
+          <EmptyState
+            icon="calendar-x"
+            title="Evento não encontrado"
+            message="Este evento não está mais disponível na agenda atual."
+            action="Voltar para eventos"
+            onPress={() => onInitialEventHandled?.()}
+          />
+        ) : (
+          <EmptyState
+            icon="cloud-off"
+            title="Evento indisponível"
+            message={linkedEvent.error ?? 'Não foi possível carregar o evento.'}
+            action="Tentar novamente"
+            onPress={linkedEvent.refresh}
+          />
+        )}
       </SafeAreaView>
     );
   }
@@ -149,7 +148,8 @@ export function EventsPage({
                   Eventos astronômicos
                 </Text>
                 <Text className="font-body text-sm leading-5 text-muted">
-                  Nascer, trânsito e ocaso da Lua e dos planetas para a sua localização.
+                  Eclipses, chuvas de meteoros e outros eventos do céu para planejar suas
+                  observações.
                 </Text>
               </View>
             </ImageBackground>
@@ -184,41 +184,21 @@ export function EventsPage({
                   className="h-11 w-11 items-center justify-center rounded-control border bg-surface"
                   onPress={() => setFiltersVisible(true)}
                   style={{
-                    borderColor:
-                      type || periodDays !== 1 ? theme.colors.primary : theme.colors.border,
+                    borderColor: filtersActive ? theme.colors.primary : theme.colors.border,
                   }}
                 >
                   <Lucide
-                    color={type || periodDays !== 1 ? theme.colors.accent : theme.colors.muted}
+                    color={filtersActive ? theme.colors.accent : theme.colors.muted}
                     name="sliders-horizontal"
                     size={18}
                   />
                 </Pressable>
               </View>
 
-              {events.meta?.stale ? (
-                <Notice
-                  icon="cloud-off"
-                  message="Exibindo a última previsão salva enquanto o provedor se recupera."
-                />
-              ) : null}
-
-              {location.fallbackMessage ? (
-                <EmptyState
-                  icon="map-pin-off"
-                  title="Localização necessária"
-                  message={location.fallbackMessage}
-                  action="Tentar novamente"
-                  onPress={location.retry}
-                />
-              ) : location.status !== 'active' || events.loading ? (
+              {events.loading ? (
                 <View className="items-center gap-3 rounded-card bg-surface p-8">
                   <ActivityIndicator color={theme.colors.primary} />
-                  <Text className="font-body text-sm text-muted">
-                    {location.status === 'active'
-                      ? 'Calculando próximos eventos...'
-                      : 'Obtendo localização...'}
-                  </Text>
+                  <Text className="font-body text-sm text-muted">Buscando eventos...</Text>
                 </View>
               ) : events.error ? (
                 <EmptyState
@@ -275,11 +255,11 @@ export function EventsPage({
             <View className="flex-row items-center justify-between">
               <Text className="font-display text-lg text-ink">Filtrar eventos</Text>
               <View className="flex-row items-center gap-4">
-                {type || periodDays !== 1 ? (
+                {filtersActive ? (
                   <Pressable
                     accessibilityRole="button"
                     onPress={() => {
-                      setPeriodDays(1);
+                      setPeriodDays(DEFAULT_PERIOD_DAYS);
                       setType(undefined);
                     }}
                   >
@@ -303,7 +283,7 @@ export function EventsPage({
                   <FilterChip
                     key={days}
                     icon="calendar-days"
-                    label={days === 1 ? '1 dia' : `${days} dias`}
+                    label={periodLabel(days)}
                     selected={periodDays === days}
                     onPress={() => setPeriodDays(days)}
                   />
@@ -314,15 +294,24 @@ export function EventsPage({
             <View className="gap-3">
               <Text className="font-label text-xs text-ink">Tipo de evento</Text>
               <View accessibilityRole="radiogroup" className="flex-row flex-wrap gap-2">
-                {types.map((option) => (
-                  <FilterChip
-                    key={option.label}
-                    icon={option.icon}
-                    label={option.label}
-                    selected={type === option.value}
-                    onPress={() => setType(option.value)}
-                  />
-                ))}
+                <FilterChip
+                  icon="grid-2x2"
+                  label="Todos"
+                  selected={type === undefined}
+                  onPress={() => setType(undefined)}
+                />
+                {availableTypes.map((option) => {
+                  const info = getEventTypeInfo(option);
+                  return (
+                    <FilterChip
+                      key={option}
+                      icon={info.icon}
+                      label={info.label}
+                      selected={type === option}
+                      onPress={() => setType(option)}
+                    />
+                  );
+                })}
               </View>
             </View>
 
@@ -370,10 +359,10 @@ const EventCard = memo(function EventCard({
   event,
   onPress,
 }: {
-  event: UpcomingAstronomicalEvent;
+  event: AstronomicalEvent;
   onPress(eventId: string): void;
 }) {
-  const config = eventTypeConfig[event.type];
+  const config = getEventTypeInfo(event.type);
   const date = new Date(event.startsAt);
   return (
     <Pressable
@@ -402,15 +391,6 @@ const EventCard = memo(function EventCard({
     </Pressable>
   );
 });
-
-function Notice({ icon, message }: { icon: LucideIconName; message: string }) {
-  return (
-    <View className="flex-row items-center gap-3 rounded-control border border-border bg-surface px-4 py-3">
-      <Lucide color={theme.colors.info} name={icon} size={18} />
-      <Text className="flex-1 font-body text-xs leading-5 text-muted">{message}</Text>
-    </View>
-  );
-}
 
 function EmptyState({
   icon,

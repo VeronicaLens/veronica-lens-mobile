@@ -17,11 +17,11 @@ test('requests the authenticated observation history', async () => {
     async <T>(path: string, init?: RequestInit) => {
       capturedPath = path;
       capturedAuthorization = new Headers(init?.headers).get('Authorization') ?? '';
-      return { data: [], page: 2, pageSize: 20, hasMore: true } as T;
+      return { data: { observations: [], page: 2, pageSize: 20, hasMore: true } } as T;
     },
   );
 
-  assert.deepEqual(history, { data: [], page: 2, pageSize: 20, hasMore: true });
+  assert.deepEqual(history, { observations: [], page: 2, pageSize: 20, hasMore: true });
   assert.equal(capturedPath, '/observations?page=2&pageSize=20');
   assert.equal(capturedAuthorization, 'Bearer access-token');
 });

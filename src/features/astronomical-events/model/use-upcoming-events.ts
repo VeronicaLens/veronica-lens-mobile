@@ -1,60 +1,45 @@
 import { useCallback, useEffect, useState } from 'react';
 
-import type {
-  UpcomingAstronomicalEvent,
-  UpcomingAstronomicalEventType,
-  UpcomingEventsMeta,
-} from '../../../shared/api/index.ts';
-import type { DeviceLocation } from '../../device-location/index.ts';
+import type { AstronomicalEvent } from '../../../shared/api/index.ts';
+import { useRequestGuard } from '../../../shared/lib/index.ts';
 import { getUpcomingEvents } from '../api/events-api.ts';
 
-export function useUpcomingEvents(
-  accessToken: string,
-  location: DeviceLocation | null,
-  periodDays: number,
-  type?: UpcomingAstronomicalEventType,
-) {
-  const [events, setEvents] = useState<UpcomingAstronomicalEvent[]>([]);
-  const [meta, setMeta] = useState<UpcomingEventsMeta | null>(null);
-  const [loading, setLoading] = useState(false);
+const EVENTS_LIMIT = 100;
+
+export function useUpcomingEvents(accessToken: string, periodDays: number) {
+  const [events, setEvents] = useState<AstronomicalEvent[]>([]);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
+  const guard = useRequestGuard();
 
   useEffect(() => {
-    if (!location) return;
-    let disposed = false;
+    const request = guard.begin();
     const load = async () => {
       setLoading(true);
       setError(null);
       const from = startOfUtcDay(new Date());
       const to = new Date(from.getTime() + periodDays * 86_400_000);
       try {
-        const response = await getUpcomingEvents(accessToken, {
+        const result = await getUpcomingEvents(accessToken, {
           from: from.toISOString(),
           to: to.toISOString(),
-          ...(type ? { type } : {}),
-          observer: location,
+          limit: EVENTS_LIMIT,
         });
-        if (!disposed) {
-          setEvents(response.data);
-          setMeta(response.meta);
-        }
+        if (guard.isCurrent(request)) setEvents(result);
       } catch {
-        if (!disposed) {
+        if (guard.isCurrent(request)) {
           setError('Não foi possível consultar os eventos. Tente novamente.');
         }
       } finally {
-        if (!disposed) setLoading(false);
+        if (guard.isCurrent(request)) setLoading(false);
       }
     };
     void load();
-    return () => {
-      disposed = true;
-    };
-  }, [accessToken, attempt, location, periodDays, type]);
+  }, [accessToken, attempt, guard, periodDays]);
 
   const refresh = useCallback(() => setAttempt((value) => value + 1), []);
-  return { events, meta, loading, error, refresh };
+  return { events, loading, error, refresh };
 }
 
 function startOfUtcDay(value: Date): Date {

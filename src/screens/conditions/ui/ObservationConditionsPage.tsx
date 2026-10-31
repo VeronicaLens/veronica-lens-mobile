@@ -3,13 +3,14 @@ import { useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { useConditionsForecast } from '../../../features/current-conditions/index.ts';
+import {
+  chooseBestHour,
+  describeFactor,
+  useConditionsForecast,
+  type ConditionHour,
+} from '../../../features/current-conditions/index.ts';
 import { useDeviceLocation, type DeviceLocation } from '../../../features/device-location/index.ts';
-import type {
-  CurrentConditions,
-  CurrentConditionsFactor,
-  ObservationRating,
-} from '../../../shared/api/index.ts';
+import type { ConditionFactor, ObservationRating } from '../../../shared/api/index.ts';
 import { theme } from '../../../shared/config/index.ts';
 
 interface ObservationConditionsPageProps {
@@ -24,10 +25,8 @@ const ratingConfig: Record<ObservationRating, { label: string; color: string }> 
   poor: { label: 'Desfavoráveis', color: theme.colors.muted },
 };
 
-const factorConfig: Record<
-  CurrentConditionsFactor['code'],
-  { label: string; icon: LucideIconName }
-> = {
+const factorConfig: Record<ConditionFactor['code'], { label: string; icon: LucideIconName }> = {
+  darkness: { label: 'Escuridão', icon: 'moon' },
   'cloud-cover': { label: 'Nuvens', icon: 'cloud' },
   precipitation: { label: 'Chuva', icon: 'cloud-rain' },
   visibility: { label: 'Visibilidade', icon: 'eye' },
@@ -39,9 +38,8 @@ const statusLabels = {
   good: 'Favorável',
   caution: 'Atenção',
   poor: 'Desfavorável',
+  unknown: 'Sem dados',
 } as const;
-
-const ratingOrder: Record<ObservationRating, number> = { good: 2, fair: 1, poor: 0 };
 
 export function ObservationConditionsPage({
   accessToken,
@@ -58,14 +56,14 @@ export function ObservationConditionsPage({
   const days = Array.from({ length: 7 }, (_, offset) => {
     const date = new Date(now.getFullYear(), now.getMonth(), now.getDate() + offset, 12);
     const dateKey = localDateKey(date);
-    const samples = (forecast.forecast?.hourly ?? []).filter((sample) =>
+    const samples = (forecast.hours ?? []).filter((sample) =>
       isSameLocalDay(new Date(sample.observedAt), date),
     );
     const nightSamples = samples.filter((sample) => {
       const hour = new Date(sample.observedAt).getHours();
       return hour >= 18 || hour < 6;
     });
-    const bestSample = chooseBestSample(nightSamples.length > 0 ? nightSamples : samples);
+    const bestSample = chooseBestHour(nightSamples.length > 0 ? nightSamples : samples);
     return { date, dateKey, samples, bestSample };
   });
 
@@ -75,7 +73,7 @@ export function ObservationConditionsPage({
     selectedDay?.bestSample ??
     null;
 
-  const chooseDay = (dateKey: string, bestSample: CurrentConditions | null) => {
+  const chooseDay = (dateKey: string, bestSample: ConditionHour | null) => {
     setSelectedDayKey(dateKey);
     setSelectedSampleAt(bestSample?.observedAt ?? null);
   };
@@ -162,7 +160,7 @@ export function ObservationConditionsPage({
               <Text className="font-label text-xs text-ink">Tentar novamente</Text>
             </Pressable>
           </View>
-        ) : forecast.forecast ? (
+        ) : forecast.hours ? (
           <>
             <View className="gap-3">
               <View className="gap-1">
@@ -214,9 +212,7 @@ export function ObservationConditionsPage({
                   </Text>
                 )}
 
-                {selectedSample ? (
-                  <ForecastResult fetchedAt={forecast.forecast.fetchedAt} sample={selectedSample} />
-                ) : null}
+                {selectedSample ? <ForecastResult sample={selectedSample} /> : null}
               </View>
             ) : null}
           </>
@@ -239,7 +235,7 @@ function DayForecastCard({
   number,
   onPress,
 }: {
-  bestSample: CurrentConditions | null;
+  bestSample: ConditionHour | null;
   date: Date;
   isSelected: boolean;
   number: number;
@@ -298,7 +294,7 @@ function HourForecastChip({
 }: {
   isSelected: boolean;
   onPress(): void;
-  sample: CurrentConditions;
+  sample: ConditionHour;
 }) {
   const color = ratingConfig[sample.rating].color;
 
@@ -318,7 +314,7 @@ function HourForecastChip({
   );
 }
 
-function ForecastResult({ fetchedAt, sample }: { fetchedAt: string; sample: CurrentConditions }) {
+function ForecastResult({ sample }: { sample: ConditionHour }) {
   const ratingDetails = ratingConfig[sample.rating];
 
   return (
@@ -332,15 +328,16 @@ function ForecastResult({ fetchedAt, sample }: { fetchedAt: string; sample: Curr
           <Text className="font-label text-sm text-ink">{ratingDetails.label}</Text>
         </View>
         <Text className="font-body text-xs text-muted">
-          Previsão para {formatDateTime(new Date(sample.observedAt))} ·{' '}
-          {Math.round(sample.temperatureCelsius)}°C · Atualizada às{' '}
-          {formatTime(new Date(fetchedAt))}
+          Previsão para {formatDateTime(new Date(sample.observedAt))}
+          {sample.temperatureCelsius !== null
+            ? ` · ${Math.round(sample.temperatureCelsius)}°C`
+            : ''}
         </Text>
       </View>
       <View className="h-px bg-border" />
       <View className="gap-3">
         {sample.factors.map((factor) => (
-          <FactorRow key={factor.code} factor={factor} />
+          <FactorRow key={factor.code} factor={factor} sample={sample} />
         ))}
       </View>
       <View className="flex-row items-start gap-2 rounded-control bg-surface-2 p-3">
@@ -354,7 +351,7 @@ function ForecastResult({ fetchedAt, sample }: { fetchedAt: string; sample: Curr
   );
 }
 
-function FactorRow({ factor }: { factor: CurrentConditionsFactor }) {
+function FactorRow({ factor, sample }: { factor: ConditionFactor; sample: ConditionHour }) {
   const config = factorConfig[factor.code];
   const color =
     factor.status === 'good'
@@ -373,24 +370,11 @@ function FactorRow({ factor }: { factor: CurrentConditionsFactor }) {
             {statusLabels[factor.status]}
           </Text>
         </View>
-        <Text className="font-body text-xs leading-5 text-muted">{factor.summary}</Text>
+        <Text className="font-body text-xs leading-5 text-muted">
+          {describeFactor(factor, sample)}
+        </Text>
       </View>
     </View>
-  );
-}
-
-function chooseBestSample(samples: CurrentConditions[]): CurrentConditions | null {
-  return (
-    [...samples].sort((left, right) => {
-      const ratingDifference = ratingOrder[right.rating] - ratingOrder[left.rating];
-      if (ratingDifference !== 0) return ratingDifference;
-      const cloudDifference = left.cloudCoverPercent - right.cloudCoverPercent;
-      if (cloudDifference !== 0) return cloudDifference;
-      const rainDifference =
-        left.precipitationProbabilityPercent - right.precipitationProbabilityPercent;
-      if (rainDifference !== 0) return rainDifference;
-      return left.windSpeedKilometersPerHour - right.windSpeedKilometersPerHour;
-    })[0] ?? null
   );
 }
 

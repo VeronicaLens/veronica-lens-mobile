@@ -65,6 +65,7 @@
     "format:check": "prettier --check .",
     "typecheck": "tsc --noEmit",
     "test": "node --test --experimental-strip-types \"src/**/*.test.ts\"",
+    "contract:sync": "node --experimental-strip-types --no-warnings scripts/sync-contract.mjs",
     "contract:generate": "openapi-ts",
     "contract:check": "npm run contract:generate && node scripts/check-generated-contract.mjs",
     "bundle:android": "expo export --platform android --output-dir dist",

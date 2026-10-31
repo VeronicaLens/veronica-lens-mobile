@@ -44,7 +44,10 @@ import {
 } from '../../../features/camera-capture/index.ts';
 import { useDeviceLocation } from '../../../features/device-location/index.ts';
 import { useDeviceOrientation } from '../../../features/device-orientation/index.ts';
-import { useObservationRecommendation } from '../../../features/observation-planning/index.ts';
+import {
+  describeRecommendation,
+  useObservationRecommendation,
+} from '../../../features/observation-planning/index.ts';
 import { useSkyGuidePositions } from '../../../features/sky-guide/index.ts';
 import type {
   ObservationRecommendation,
@@ -721,7 +724,7 @@ export function SkyGuidePage({ accessToken, isActive = true, onClose }: SkyGuide
                       {recommendationTitle(planning.recommendation)}
                     </Text>
                     <Text className="font-body text-[10px] leading-4 text-muted">
-                      {planning.recommendation.summary}
+                      {describeRecommendation(planning.recommendation).summary}
                     </Text>
                   </>
                 ) : null}
@@ -1109,17 +1112,16 @@ function objectTypeLabel(type: SkyGuideObjectPosition['type']): string {
 }
 
 function recommendationTitle(recommendation: ObservationRecommendation): string {
-  if (recommendation.status !== 'recommended' || !recommendation.recommendedWindow) {
-    return recommendation.status === 'insufficient_data'
-      ? 'Dados insuficientes para recomendar'
-      : 'Sem janela favorável nas próximas 24 horas';
+  const window = recommendation.window;
+  if (recommendation.status !== 'recommended' || !window) {
+    return 'Sem janela favorável nas próximas 24 horas';
   }
-  const from = new Date(recommendation.recommendedWindow.from).toLocaleString('pt-BR', {
+  const from = new Date(window.from).toLocaleString('pt-BR', {
     weekday: 'short',
     hour: '2-digit',
     minute: '2-digit',
   });
-  const to = new Date(recommendation.recommendedWindow.to).toLocaleString('pt-BR', {
+  const to = new Date(window.to).toLocaleString('pt-BR', {
     weekday: 'short',
     hour: '2-digit',
     minute: '2-digit',

@@ -1,21 +1,34 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
-import type { LearningTrack, Lesson, LessonProgress } from '../../../shared/api/index.ts';
+import type {
+  LearningTrack,
+  LessonDetail,
+  LessonProgress,
+  LessonSummary,
+} from '../../../shared/api/index.ts';
 import { useRequestGuard } from '../../../shared/lib/index.ts';
 import {
-  getLearningProgress,
+  getLearningLesson,
+  getLearningTrack,
   getLearningTracks,
-  getLessons,
   upsertLessonProgress,
 } from '../api/learning-api.ts';
+import {
+  applyLessonProgress,
+  buildTrackStats,
+  countTrackProgress,
+} from '../lib/learning-progress.ts';
 
 export function useLearning(accessToken: string) {
   const [tracks, setTracks] = useState<LearningTrack[]>([]);
-  const [progress, setProgress] = useState<LessonProgress[]>([]);
-  const [lessonsByTrack, setLessonsByTrack] = useState<Record<string, Lesson[]>>({});
+  const [lessonsByTrack, setLessonsByTrack] = useState<Record<string, LessonSummary[]>>({});
+  const [lessonDetails, setLessonDetails] = useState<Record<string, LessonDetail>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lessonsLoading, setLessonsLoading] = useState<string | null>(null);
+  const [lessonLoading, setLessonLoading] = useState<string | null>(null);
+  const [lessonsFailedFor, setLessonsFailedFor] = useState<string | null>(null);
+  const [lessonFailedFor, setLessonFailedFor] = useState<string | null>(null);
   const guard = useRequestGuard();
 
   const load = useCallback(async () => {
@@ -23,22 +36,11 @@ export function useLearning(accessToken: string) {
     setLoading(true);
     setError(null);
     try {
-      const [tracksResult, progressResult] = await Promise.all([
-        getLearningTracks(accessToken),
-        getLearningProgress(accessToken),
-      ]);
+      const loaded = await getLearningTracks(accessToken);
       if (!guard.isCurrent(request)) return;
-      setTracks(tracksResult);
-      setProgress(progressResult);
-
-      const lessonsEntries = await Promise.all(
-        tracksResult.map(async (track) => {
-          const lessons = await getLessons(accessToken, track.id);
-          return [track.id, lessons] as const;
-        }),
-      );
-      if (!guard.isCurrent(request)) return;
-      setLessonsByTrack(Object.fromEntries(lessonsEntries));
+      setTracks(loaded);
+      setLessonsByTrack({});
+      setLessonDetails({});
     } catch {
       if (guard.isCurrent(request)) {
         setError('Não foi possível carregar as trilhas de aprendizado.');
@@ -55,50 +57,60 @@ export function useLearning(accessToken: string) {
 
   const loadLessons = useCallback(
     async (trackId: string) => {
-      if (lessonsByTrack[trackId]) return;
+      const track = tracks.find((candidate) => candidate.id === trackId);
+      if (!track || lessonsByTrack[trackId] || lessonsLoading === trackId) return;
+      setLessonsFailedFor(null);
       setLessonsLoading(trackId);
       try {
-        const lessons = await getLessons(accessToken, trackId);
-        setLessonsByTrack((current) => ({ ...current, [trackId]: lessons }));
+        const detail = await getLearningTrack(accessToken, track.slug);
+        setLessonsByTrack((current) => ({ ...current, [trackId]: detail.lessons }));
+      } catch {
+        setLessonsFailedFor(trackId);
       } finally {
         setLessonsLoading((current) => (current === trackId ? null : current));
       }
     },
-    [accessToken, lessonsByTrack],
+    [accessToken, lessonsByTrack, lessonsLoading, tracks],
   );
 
-  const progressByLessonId = useMemo(
-    () => new Map(progress.map((entry) => [entry.lessonId, entry])),
-    [progress],
+  const loadLesson = useCallback(
+    async (lessonId: string) => {
+      if (lessonDetails[lessonId] || lessonLoading === lessonId) return;
+      setLessonFailedFor(null);
+      setLessonLoading(lessonId);
+      try {
+        const lesson = await getLearningLesson(accessToken, lessonId);
+        setLessonDetails((current) => ({ ...current, [lessonId]: lesson }));
+      } catch {
+        setLessonFailedFor(lessonId);
+      } finally {
+        setLessonLoading((current) => (current === lessonId ? null : current));
+      }
+    },
+    [accessToken, lessonDetails, lessonLoading],
   );
 
-  const trackStats = useMemo(() => {
-    const stats = new Map<
-      string,
-      { total: number; completed: number; percent: number; nextLesson: Lesson | null }
-    >();
-    for (const track of tracks) {
-      const lessons = lessonsByTrack[track.id] ?? [];
-      const total = lessons.length;
-      const completed = lessons.filter(
-        (lesson) => progressByLessonId.get(lesson.id)?.status === 'completed',
-      ).length;
-      const percent = total > 0 ? Math.round((completed / total) * 100) : 0;
-      const nextLesson =
-        lessons.find((lesson) => progressByLessonId.get(lesson.id)?.status !== 'completed') ?? null;
-      stats.set(track.id, { total, completed, percent, nextLesson });
+  const progressByLessonId = useMemo(() => {
+    const map = new Map<string, LessonProgress>();
+    for (const lessons of Object.values(lessonsByTrack)) {
+      for (const lesson of lessons) map.set(lesson.id, lesson.progress);
     }
-    return stats;
-  }, [tracks, lessonsByTrack, progressByLessonId]);
+    return map;
+  }, [lessonsByTrack]);
 
-  const continueTrack = useMemo(() => {
-    return (
+  const trackStats = useMemo(
+    () => buildTrackStats(tracks, lessonsByTrack),
+    [lessonsByTrack, tracks],
+  );
+
+  const continueTrack = useMemo(
+    () =>
       tracks.find((track) => {
         const stats = trackStats.get(track.id);
         return stats && stats.completed > 0 && stats.completed < stats.total;
-      }) ?? null
-    );
-  }, [tracks, trackStats]);
+      }) ?? null,
+    [tracks, trackStats],
+  );
 
   const markLessonComplete = useCallback(
     async (lessonId: string) => {
@@ -106,18 +118,29 @@ export function useLearning(accessToken: string) {
         status: 'completed',
         progressPercent: 100,
       });
-      setProgress((current) => [
-        ...current.filter((entry) => entry.lessonId !== lessonId),
-        updated,
-      ]);
+      const trackId = Object.keys(lessonsByTrack).find((id) =>
+        lessonsByTrack[id]?.some((lesson) => lesson.id === lessonId),
+      );
+      if (!trackId) return;
+      const lessons = applyLessonProgress(lessonsByTrack[trackId] ?? [], updated);
+      setLessonsByTrack((current) => ({ ...current, [trackId]: lessons }));
+      setTracks((current) =>
+        current.map((track) =>
+          track.id === trackId ? { ...track, progress: countTrackProgress(lessons) } : track,
+        ),
+      );
     },
-    [accessToken],
+    [accessToken, lessonsByTrack],
   );
 
   return {
     tracks,
     lessonsByTrack,
+    lessonDetails,
     lessonsLoading,
+    lessonLoading,
+    lessonsFailedFor,
+    lessonFailedFor,
     progressByLessonId,
     trackStats,
     continueTrack,
@@ -125,6 +148,7 @@ export function useLearning(accessToken: string) {
     error,
     refresh: load,
     loadLessons,
+    loadLesson,
     markLessonComplete,
   };
 }

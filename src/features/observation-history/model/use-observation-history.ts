@@ -26,7 +26,7 @@ export function useObservationHistory(accessToken: string) {
     try {
       const response = await getObservationHistory(accessToken, 1, pageSize);
       if (!guard.isCurrent(request)) return;
-      setObservations(response.data);
+      setObservations(response.observations);
       setPage(response.page);
       setHasMore(response.hasMore);
     } catch (cause) {
@@ -53,7 +53,7 @@ export function useObservationHistory(accessToken: string) {
     try {
       const response = await getObservationHistory(accessToken, page + 1, pageSize);
       if (!guard.isCurrent(request)) return;
-      setObservations((current) => [...current, ...response.data]);
+      setObservations((current) => [...current, ...response.observations]);
       setPage(response.page);
       setHasMore(response.hasMore);
     } catch (cause) {

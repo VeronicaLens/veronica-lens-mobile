@@ -1,41 +1,44 @@
 import { Lucide, type LucideIconName } from '@react-native-vector-icons/lucide';
+import { useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { useObservationRecommendation } from '../../../features/observation-planning/index.ts';
-import type { DeviceLocation } from '../../../features/device-location/index.ts';
-import type {
-  ObservationRecommendation,
-  UpcomingAstronomicalEvent,
-  UpcomingEventsMeta,
-  VisibilityFactor,
-} from '../../../shared/api/index.ts';
+import { getEventTypeInfo } from '../../../features/astronomical-events/index.ts';
+import { useCelestialObjectId } from '../../../features/celestial-catalog/index.ts';
+import { useDeviceLocation } from '../../../features/device-location/index.ts';
+import {
+  describeRecommendation,
+  useObservationRecommendation,
+  type RecommendationDetails,
+} from '../../../features/observation-planning/index.ts';
+import type { AstronomicalEvent } from '../../../shared/api/index.ts';
 import { theme } from '../../../shared/config/index.ts';
 
 interface EventDetailPageProps {
   accessToken: string;
-  event: UpcomingAstronomicalEvent;
-  location: DeviceLocation | null;
-  meta: UpcomingEventsMeta | null;
+  event: AstronomicalEvent;
   onBack(): void;
 }
 
-export function EventDetailPage({
-  accessToken,
-  event,
-  location,
-  meta,
-  onBack,
-}: EventDetailPageProps) {
+export function EventDetailPage({ accessToken, event, onBack }: EventDetailPageProps) {
+  const location = useDeviceLocation();
+  const catalog = useCelestialObjectId(accessToken, event.celestialObjectName);
+  const [reference] = useState(() => {
+    const now = Date.now();
+    const startsAt = Date.parse(event.startsAt);
+    const endsAt = Date.parse(event.endsAt ?? event.startsAt);
+    return { ended: endsAt < now, windowFrom: new Date(Math.max(now, startsAt)).toISOString() };
+  });
   const planning = useObservationRecommendation(
     accessToken,
-    event.objectIds.at(0) ?? null,
-    location,
-    event.startsAt,
+    reference.ended ? null : catalog.objectId,
+    location.location,
+    reference.windowFrom,
   );
-  const config = eventTypeConfig(event.type);
+  const config = getEventTypeInfo(event.type);
   const recommendation = planning.recommendation;
-  const window = recommendation?.status === 'recommended' ? recommendation.recommendedWindow : null;
+  const details = recommendation ? describeRecommendation(recommendation) : null;
+  const window = recommendation?.status === 'recommended' ? recommendation.window : null;
 
   return (
     <SafeAreaView className="flex-1 bg-canvas" edges={['top', 'left', 'right']}>
@@ -69,16 +72,21 @@ export function EventDetailPage({
               >
                 {config.label}
               </Text>
-              <Text className="font-body text-xs text-muted">Acompanhe o melhor momento</Text>
+              <Text className="font-body text-xs text-muted">
+                {event.celestialObjectName ?? 'Acompanhe o melhor momento'}
+              </Text>
             </View>
           </View>
           <Text accessibilityRole="header" className="font-display text-[30px] leading-9 text-ink">
             {event.title}
           </Text>
           <Text className="font-body text-sm leading-6 text-muted">{event.description}</Text>
-          <View className="flex-row items-center gap-2 border-t border-border pt-3">
-            <Lucide color={theme.colors.accent} name="calendar-clock" size={16} />
-            <Text className="font-label text-xs text-ink">{formatEventDate(event.startsAt)}</Text>
+          <View className="gap-2 border-t border-border pt-3">
+            <DateRow icon="calendar-clock" label="Início" value={event.startsAt} />
+            {event.peaksAt ? <DateRow icon="sparkles" label="Pico" value={event.peaksAt} /> : null}
+            {event.endsAt ? (
+              <DateRow icon="calendar-check" label="Fim" value={event.endsAt} />
+            ) : null}
           </View>
         </View>
 
@@ -110,20 +118,28 @@ export function EventDetailPage({
               </View>
             </View>
           ) : null}
-          {!location ? (
+          {!event.celestialObjectName ? (
+            <PlanningMessage icon="orbit">
+              Este evento não está ligado a um astro específico para calcular uma janela.
+            </PlanningMessage>
+          ) : reference.ended ? (
+            <PlanningMessage icon="calendar-check">Este evento já aconteceu.</PlanningMessage>
+          ) : catalog.loading ? (
+            <Loading title="Localizando o astro" message="Consultando o catálogo celeste." />
+          ) : !catalog.objectId ? (
+            <PlanningMessage icon="orbit">
+              Não encontramos este astro no catálogo para calcular um plano de observação.
+            </PlanningMessage>
+          ) : !location.location ? (
             <PlanningMessage icon="map-pin-off">
-              Ative a localização para calcular um plano personalizado para o seu céu.
+              {location.fallbackMessage ??
+                'Ative a localização para calcular um plano personalizado para o seu céu.'}
             </PlanningMessage>
           ) : planning.loading ? (
-            <View className="flex-row items-center gap-3 rounded-control bg-surface px-3 py-3">
-              <ActivityIndicator color={theme.colors.accent} size="small" />
-              <View className="flex-1 gap-1">
-                <Text className="font-label text-xs text-ink">Analisando o céu</Text>
-                <Text className="font-body text-[11px] text-muted">
-                  Verificando posição do astro e previsão do tempo.
-                </Text>
-              </View>
-            </View>
+            <Loading
+              title="Analisando o céu"
+              message="Verificando posição do astro e previsão do tempo."
+            />
           ) : planning.error ? (
             <View className="flex-row items-center gap-3 rounded-control bg-surface px-3 py-3">
               <Lucide color={theme.colors.event} name="cloud-alert" size={18} />
@@ -134,7 +150,7 @@ export function EventDetailPage({
                 <Text className="font-label text-xs text-accent">Tentar</Text>
               </Pressable>
             </View>
-          ) : recommendation ? (
+          ) : recommendation && details ? (
             <View className="gap-2">
               <View className="flex-row items-center gap-2">
                 <Lucide
@@ -147,14 +163,10 @@ export function EventDetailPage({
                 <Text className="flex-1 font-label text-xs text-ink">
                   {recommendation.status === 'recommended'
                     ? 'Condições avaliadas'
-                    : recommendation.status === 'insufficient_data'
-                      ? 'Análise incompleta'
-                      : 'Nenhuma janela favorável'}
+                    : 'Nenhuma janela favorável'}
                 </Text>
               </View>
-              <Text className="font-body text-xs leading-5 text-muted">
-                {recommendation.summary}
-              </Text>
+              <Text className="font-body text-xs leading-5 text-muted">{details.summary}</Text>
             </View>
           ) : (
             <PlanningMessage icon="orbit">
@@ -163,92 +175,83 @@ export function EventDetailPage({
           )}
         </View>
 
-        {recommendation ? (
+        {details ? (
           <DetailCard icon="scan-eye" title="Fatores considerados">
-            <VisibilityDetails recommendation={recommendation} />
+            <VisibilityDetails
+              details={details}
+              intervalMinutes={recommendation?.sampleIntervalMinutes}
+            />
           </DetailCard>
         ) : null}
-
-        <DetailCard icon="database" title="Origem do dado">
-          {meta ? (
-            <View className="gap-1">
-              <Text className="font-body text-xs text-ink">
-                {meta.source === 'provider' ? 'Provedor astronômico' : 'Cache da VeronicaLens'}
-              </Text>
-              <Text className="font-body text-[11px] text-muted">
-                Atualizado em {formatEventDate(meta.updatedAt)}
-              </Text>
-              {meta.stale ? (
-                <Text className="font-body text-[11px] text-event">
-                  Última versão salva; atualização do provedor indisponível.
-                </Text>
-              ) : null}
-            </View>
-          ) : (
-            <Text className="font-body text-xs text-muted">
-              Origem e atualização indisponíveis.
-            </Text>
-          )}
-        </DetailCard>
       </ScrollView>
     </SafeAreaView>
   );
 }
 
-function VisibilityDetails({ recommendation }: { recommendation: ObservationRecommendation }) {
-  const altitude = findFactor(recommendation.factors, 'altitude');
-  const weather = findFactor(recommendation.factors, 'weather');
-  const altitudeValue = altitude?.metrics?.altitudeDegrees ?? null;
-  const minimumValue = altitude?.metrics?.minimumAltitudeDegrees ?? null;
-  const cloudValue = weather?.metrics?.cloudCoverPercent ?? null;
-  const precipitationValue = weather?.metrics?.precipitationProbabilityPercent ?? null;
-  const visibilityValue = weather?.metrics?.visibilityMeters ?? null;
-
+function VisibilityDetails({
+  details,
+  intervalMinutes,
+}: {
+  details: RecommendationDetails;
+  intervalMinutes: number | undefined;
+}) {
   return (
     <View className="gap-3">
-      {altitudeValue !== null || cloudValue !== null ? (
-        <View className="overflow-hidden rounded-control bg-surface-2">
-          {altitudeValue !== null ? (
-            <StatRow
-              left={{ icon: 'triangle', label: 'Altitude', value: `${altitudeValue}°` }}
-              right={
-                minimumValue !== null
-                  ? { icon: 'settings', label: 'Mínimo configurado', value: `${minimumValue}°` }
-                  : undefined
-              }
-            />
-          ) : null}
-          {altitudeValue !== null && cloudValue !== null ? (
-            <View className="h-px bg-border" />
-          ) : null}
-          {cloudValue !== null ? (
-            <StatRow
-              left={{ icon: 'cloud', label: 'Nuvens', value: `${cloudValue}%` }}
-              right={
-                precipitationValue !== null
-                  ? {
-                      icon: 'cloud-rain',
-                      label: 'Probabilidade de precipitação',
-                      value: `${precipitationValue}%`,
-                    }
-                  : undefined
-              }
-            />
-          ) : null}
-          {visibilityValue !== null ? (
-            <>
-              <View className="h-px bg-border" />
-              <StatRow
-                left={{ icon: 'eye', label: 'Visibilidade', value: `${visibilityValue} m` }}
-              />
-            </>
-          ) : null}
-        </View>
-      ) : null}
+      <View className="overflow-hidden rounded-control bg-surface-2">
+        <StatRow
+          left={{
+            icon: 'triangle',
+            label: 'Altitude máxima',
+            value: details.peakAltitudeDegrees !== null ? `${details.peakAltitudeDegrees}°` : '—',
+          }}
+          right={{
+            icon: 'settings',
+            label: 'Mínimo configurado',
+            value: `${details.minimumAltitudeDegrees}°`,
+          }}
+        />
+        <View className="h-px bg-border" />
+        <StatRow
+          left={{
+            icon: 'circle-check',
+            label: 'Horários favoráveis',
+            value: `${details.favorableSamples} de ${details.totalSamples}`,
+          }}
+          right={
+            intervalMinutes !== undefined
+              ? { icon: 'clock-3', label: 'Intervalo analisado', value: `${intervalMinutes} min` }
+              : undefined
+          }
+        />
+      </View>
 
-      {!recommendation.meta.weatherAvailable ? (
+      {!details.weatherAvailable ? (
         <Text className="font-body text-[11px] text-event">Previsão climática indisponível.</Text>
       ) : null}
+    </View>
+  );
+}
+
+function DateRow({ icon, label, value }: { icon: LucideIconName; label: string; value: string }) {
+  return (
+    <View className="flex-row items-center gap-2">
+      <Lucide color={theme.colors.accent} name={icon} size={16} />
+      <Text className="font-body text-xs text-muted">{label}</Text>
+      <Text className="flex-1 text-right font-label text-xs text-ink">
+        {formatEventDate(value)}
+      </Text>
+    </View>
+  );
+}
+
+function Loading({ title, message }: { title: string; message: string }) {
+  return (
+    <View className="flex-row items-center gap-3 rounded-control bg-surface px-3 py-3">
+      <ActivityIndicator color={theme.colors.accent} size="small" />
+      <View className="flex-1 gap-1">
+        <Text className="font-label text-xs text-ink">{title}</Text>
+        <Text className="font-body text-[11px] text-muted">{message}</Text>
+      </View>
     </View>
   );
 }
@@ -296,13 +299,6 @@ function Stat({ item }: { item: StatItem }) {
   );
 }
 
-function findFactor(
-  factors: VisibilityFactor[],
-  code: VisibilityFactor['code'],
-): VisibilityFactor | undefined {
-  return factors.find((factor) => factor.code === code);
-}
-
 function DetailCard({
   icon,
   title,
@@ -321,18 +317,6 @@ function DetailCard({
       {children}
     </View>
   );
-}
-
-function eventTypeConfig(type: UpcomingAstronomicalEvent['type']): {
-  icon: LucideIconName;
-  label: string;
-  color: string;
-} {
-  return {
-    rise: { icon: 'sunrise', label: 'Nascer', color: theme.colors.info },
-    transit: { icon: 'move-up', label: 'Trânsito', color: theme.colors.accent },
-    set: { icon: 'sunset', label: 'Ocaso', color: theme.colors.event },
-  }[type] as { icon: LucideIconName; label: string; color: string };
 }
 
 function formatEventDate(value: string): string {

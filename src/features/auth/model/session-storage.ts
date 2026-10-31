@@ -27,7 +27,6 @@ function isSession(value: unknown): value is Session {
   if (!value || typeof value !== 'object') return false;
   const candidate = value as Partial<Session>;
   return (
-    typeof candidate.id === 'string' &&
     typeof candidate.accessToken === 'string' &&
     typeof candidate.refreshToken === 'string' &&
     candidate.tokenType === 'bearer' &&

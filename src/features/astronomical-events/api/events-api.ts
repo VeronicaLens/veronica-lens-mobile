@@ -1,7 +1,4 @@
-import type {
-  UpcomingAstronomicalEventType,
-  UpcomingEventsResponse,
-} from '../../../shared/api/index.ts';
+import type { AstronomicalEvent, DataResponse, UpcomingEvents } from '../../../shared/api/index.ts';
 import { apiRequest } from '../../../shared/api/index.ts';
 
 type Request = <T>(path: string, init?: RequestInit) => Promise<T>;
@@ -9,28 +6,36 @@ type Request = <T>(path: string, init?: RequestInit) => Promise<T>;
 export interface UpcomingEventsFilters {
   from: string;
   to: string;
-  type?: UpcomingAstronomicalEventType;
-  observer: {
-    latitudeDegrees: number;
-    longitudeDegrees: number;
-    elevationMeters: number;
-  };
+  type?: string;
+  limit?: number;
+}
+
+function authorization(accessToken: string) {
+  return { Authorization: `Bearer ${accessToken}` };
 }
 
 export async function getUpcomingEvents(
   accessToken: string,
   filters: UpcomingEventsFilters,
   request: Request = apiRequest,
-): Promise<UpcomingEventsResponse> {
-  const query = new URLSearchParams({
-    from: filters.from,
-    to: filters.to,
-    latitudeDegrees: String(filters.observer.latitudeDegrees),
-    longitudeDegrees: String(filters.observer.longitudeDegrees),
-    elevationMeters: String(filters.observer.elevationMeters),
-  });
+): Promise<AstronomicalEvent[]> {
+  const query = new URLSearchParams({ from: filters.from, to: filters.to });
   if (filters.type) query.set('type', filters.type);
-  return await request<UpcomingEventsResponse>(`/events?${query.toString()}`, {
-    headers: { Authorization: `Bearer ${accessToken}` },
+  if (filters.limit) query.set('limit', String(filters.limit));
+  const response = await request<DataResponse<UpcomingEvents>>(`/events?${query.toString()}`, {
+    headers: authorization(accessToken),
   });
+  return response.data.events;
+}
+
+export async function getEventById(
+  accessToken: string,
+  eventId: string,
+  request: Request = apiRequest,
+): Promise<AstronomicalEvent> {
+  const response = await request<DataResponse<{ event: AstronomicalEvent }>>(
+    `/events/${encodeURIComponent(eventId)}`,
+    { headers: authorization(accessToken) },
+  );
+  return response.data.event;
 }

@@ -20,7 +20,6 @@ import { useProfile } from '../../../features/profile/index.ts';
 import {
   deactivateStoredPushDevice,
   requestAndRegisterPushDevice,
-  useEventPreferences,
 } from '../../../features/notifications/index.ts';
 import {
   categorizeObservation,
@@ -179,7 +178,6 @@ export function ProfilePage({
   onSaved,
 }: ProfilePageProps) {
   const { profile, loading, saving, error, load, save, saveAvatar } = useProfile(accessToken);
-  const eventPreferences = useEventPreferences(accessToken);
   const history = useObservationHistory(accessToken);
   const [editing, setEditing] = useState(false);
   const [photoMessage, setPhotoMessage] = useState<string | null>(null);
@@ -532,33 +530,6 @@ export function ProfilePage({
                     value={profile.latitude !== null && profile.longitude !== null}
                     onChange={(value) => void changeLocation(value)}
                   />
-                  {profile.notificationsEnabled ? (
-                    <View className="gap-3 pt-1">
-                      <Text className="font-label text-xs text-ink">Alertas de eventos</Text>
-                      {eventPreferences.preferences.map((preference) => (
-                        <PreferenceRow
-                          key={preference.eventType}
-                          disabled={eventPreferences.saving}
-                          icon="calendar-clock"
-                          iconColor={theme.colors.accent}
-                          title={eventLabel(preference.eventType)}
-                          subtitle={`Avisar ${preference.leadMinutes} min antes`}
-                          value={preference.enabled}
-                          onChange={(value) =>
-                            void eventPreferences.setEnabled(preference.eventType, value)
-                          }
-                        />
-                      ))}
-                      {eventPreferences.error ? (
-                        <Text
-                          accessibilityLiveRegion="polite"
-                          className="font-body text-xs text-event"
-                        >
-                          {eventPreferences.error}
-                        </Text>
-                      ) : null}
-                    </View>
-                  ) : null}
                   {saving && <ActivityIndicator color={theme.colors.primary} />}
                   {error && (
                     <Text accessibilityLiveRegion="polite" className="font-body text-xs text-event">
@@ -617,15 +588,5 @@ export function ProfilePage({
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
-  );
-}
-
-function eventLabel(eventType: string): string {
-  return (
-    {
-      rise: 'Nascer de astros',
-      transit: 'Trânsito de astros',
-      set: 'Ocaso de astros',
-    }[eventType] ?? eventType
   );
 }

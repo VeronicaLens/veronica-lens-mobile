@@ -9,30 +9,24 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { useUpcomingEvents } from '../../../features/astronomical-events/index.ts';
+import {
+  getEventTypeInfo,
+  useUpcomingEvents,
+} from '../../../features/astronomical-events/index.ts';
 import { useCurrentConditions } from '../../../features/current-conditions/index.ts';
 import { useDeviceLocation, type DeviceLocation } from '../../../features/device-location/index.ts';
-import type { ObservationRating, UpcomingAstronomicalEvent } from '../../../shared/api/index.ts';
+import type { AstronomicalEvent, ObservationRating } from '../../../shared/api/index.ts';
 import { theme } from '../../../shared/config/index.ts';
 
 const backgroundImage = require('../../../../assets/loading-background.jpeg') as number;
 
-const EVENT_PREVIEW_PERIOD_DAYS = 14;
+const EVENT_PREVIEW_PERIOD_DAYS = 30;
 const EVENT_PREVIEW_COUNT = 3;
 
 const ratingConfig: Record<ObservationRating, { label: string; color: string }> = {
   good: { label: 'Boas condições', color: theme.colors.info },
   fair: { label: 'Condições regulares', color: theme.colors.event },
   poor: { label: 'Condições desfavoráveis', color: theme.colors.muted },
-};
-
-const eventTypeConfig: Record<
-  UpcomingAstronomicalEvent['type'],
-  { icon: LucideIconName; label: string; color: string }
-> = {
-  rise: { icon: 'sunrise', label: 'Nascer', color: theme.colors.info },
-  transit: { icon: 'move-up', label: 'Trânsito', color: theme.colors.accent },
-  set: { icon: 'sunset', label: 'Ocaso', color: theme.colors.event },
 };
 
 export interface HomePageProps {
@@ -57,7 +51,7 @@ export function HomePage({
   onOpenConditionSimulation,
 }: HomePageProps) {
   const location = useDeviceLocation();
-  const events = useUpcomingEvents(accessToken, location.location, EVENT_PREVIEW_PERIOD_DAYS);
+  const events = useUpcomingEvents(accessToken, EVENT_PREVIEW_PERIOD_DAYS);
   const conditions = useCurrentConditions(accessToken, location.location);
   const upcomingEvents = events.events.slice(0, EVENT_PREVIEW_COUNT);
 
@@ -117,7 +111,11 @@ export function HomePage({
                   <ConditionStat
                     icon="thermometer"
                     label="Temperatura"
-                    value={`${Math.round(conditions.conditions.temperatureCelsius)}°`}
+                    value={
+                      conditions.conditions.temperatureCelsius !== null
+                        ? `${Math.round(conditions.conditions.temperatureCelsius)}°`
+                        : '—'
+                    }
                   />
                   <ConditionStat
                     icon="cloud-sun"
@@ -127,7 +125,11 @@ export function HomePage({
                   <ConditionStat
                     icon="cloud-rain"
                     label="Chance de chuva"
-                    value={`${Math.round(conditions.conditions.precipitationProbabilityPercent)}%`}
+                    value={
+                      conditions.conditions.precipitationProbabilityPercent !== null
+                        ? `${Math.round(conditions.conditions.precipitationProbabilityPercent)}%`
+                        : '—'
+                    }
                   />
                   <ConditionStat
                     icon="eye"
@@ -189,24 +191,11 @@ export function HomePage({
               </Pressable>
             </View>
 
-            {location.fallbackMessage ? (
-              <Pressable
-                accessibilityRole="button"
-                className="flex-row items-center gap-3 rounded-card border border-border bg-surface p-5 active:opacity-80"
-                onPress={location.retry}
-              >
-                <Lucide color={theme.colors.muted} name="map-pin-off" size={20} />
-                <Text className="flex-1 font-body text-sm leading-5 text-muted">
-                  {location.fallbackMessage}
-                </Text>
-              </Pressable>
-            ) : location.status !== 'active' || events.loading ? (
+            {events.loading ? (
               <View className="flex-row items-center gap-3 rounded-card border border-border bg-surface p-5">
                 <ActivityIndicator color={theme.colors.primary} />
                 <Text className="flex-1 font-body text-sm leading-5 text-muted">
-                  {location.status === 'active'
-                    ? 'Calculando próximos eventos...'
-                    : 'Obtendo sua localização...'}
+                  Buscando próximos eventos...
                 </Text>
               </View>
             ) : events.error ? (
@@ -239,7 +228,7 @@ export function HomePage({
                 onPress={onOpenEvents}
               >
                 <Text className="font-body text-sm leading-5 text-muted">
-                  Veja quando a Lua e os planetas estarão visíveis no seu céu.
+                  Acompanhe eclipses, chuvas de meteoros e outros eventos do céu.
                 </Text>
               </Pressable>
             )}
@@ -257,7 +246,7 @@ export function HomePage({
                 onPress={onOpenCamera}
               />
               <QuickAccessCard
-                description="Veja quando a Lua e os planetas estarão no céu."
+                description="Acompanhe eclipses, chuvas de meteoros e mais."
                 icon="calendar-days"
                 label="Eventos"
                 onPress={onOpenEvents}
@@ -296,14 +285,8 @@ function ConditionStat({
   );
 }
 
-function EventPreviewCard({
-  event,
-  onPress,
-}: {
-  event: UpcomingAstronomicalEvent;
-  onPress(): void;
-}) {
-  const config = eventTypeConfig[event.type];
+function EventPreviewCard({ event, onPress }: { event: AstronomicalEvent; onPress(): void }) {
+  const config = getEventTypeInfo(event.type);
   const date = new Date(event.startsAt);
 
   return (

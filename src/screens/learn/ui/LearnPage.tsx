@@ -11,7 +11,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useLearning } from '../../../features/learning/index.ts';
-import type { LearningTrack, Lesson, LessonProgress } from '../../../shared/api/index.ts';
+import type { LearningTrack, LessonProgress, LessonSummary } from '../../../shared/api/index.ts';
 import { theme } from '../../../shared/config/index.ts';
 
 const backgroundImage = require('../../../../assets/loading-background.jpeg') as number;
@@ -30,6 +30,16 @@ export function LearnPage({ accessToken }: LearnPageProps) {
   const selectedTrack = learning.tracks.find((track) => track.id === selectedTrackId) ?? null;
   const lessons = selectedTrackId ? (learning.lessonsByTrack[selectedTrackId] ?? null) : null;
   const selectedLesson = lessons?.find((lesson) => lesson.id === selectedLessonId) ?? null;
+
+  const openTrack = (trackId: string) => {
+    setSelectedTrackId(trackId);
+    void learning.loadLessons(trackId);
+  };
+  const openLesson = (lessonId: string) => {
+    setCompletionError(null);
+    setSelectedLessonId(lessonId);
+    void learning.loadLesson(lessonId);
+  };
 
   if (selectedTrack && selectedLesson && lessons) {
     const progress = learning.progressByLessonId.get(selectedLesson.id);
@@ -98,9 +108,22 @@ export function LearnPage({ accessToken }: LearnPageProps) {
                 <Lucide color={theme.colors.accent} name="lightbulb" size={16} />
                 <Text className="font-label text-sm text-ink">O que você vai aprender</Text>
               </View>
-              <Text className="font-body text-sm leading-6 text-muted">
-                {selectedLesson.content}
-              </Text>
+              {learning.lessonDetails[selectedLesson.id] ? (
+                <Text className="font-body text-sm leading-6 text-muted">
+                  {learning.lessonDetails[selectedLesson.id]?.content}
+                </Text>
+              ) : learning.lessonFailedFor === selectedLesson.id ? (
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => void learning.loadLesson(selectedLesson.id)}
+                >
+                  <Text className="font-body text-sm leading-6 text-event">
+                    Não foi possível carregar o conteúdo. Toque para tentar novamente.
+                  </Text>
+                </Pressable>
+              ) : (
+                <ActivityIndicator color={theme.colors.primary} />
+              )}
             </View>
           </View>
 
@@ -140,8 +163,7 @@ export function LearnPage({ accessToken }: LearnPageProps) {
               accessibilityRole="button"
               className="h-12 flex-row items-center justify-center gap-2 rounded-pill bg-brand active:opacity-80"
               onPress={() => {
-                setCompletionError(null);
-                setSelectedLessonId(nextLesson.id);
+                openLesson(nextLesson.id);
               }}
             >
               <Text className="font-label text-xs text-ink">
@@ -209,7 +231,9 @@ export function LearnPage({ accessToken }: LearnPageProps) {
                 <Pressable
                   accessibilityRole="button"
                   className="flex-row items-center justify-between rounded-control bg-surface-2 px-4 py-3 active:opacity-80"
-                  onPress={() => setSelectedLessonId(stats.nextLesson?.id ?? null)}
+                  onPress={() => {
+                    if (stats.nextLesson) openLesson(stats.nextLesson.id);
+                  }}
                 >
                   <View className="flex-1 gap-1">
                     <Text className="font-label text-[10px] uppercase tracking-[1px] text-accent">
@@ -230,12 +254,24 @@ export function LearnPage({ accessToken }: LearnPageProps) {
             </View>
           ) : null}
 
-          {learning.lessonsLoading === selectedTrack.id ? (
+          {learning.lessonsLoading === selectedTrack.id ||
+          (!lessons && learning.lessonsFailedFor !== selectedTrack.id) ? (
             <View className="items-center gap-3 rounded-card bg-surface p-8">
               <ActivityIndicator color={theme.colors.primary} />
               <Text className="font-body text-sm text-muted">Carregando aulas...</Text>
             </View>
-          ) : lessons && lessons.length > 0 ? (
+          ) : !lessons ? (
+            <Pressable
+              accessibilityRole="button"
+              className="items-center gap-3 rounded-card border border-border bg-surface p-7"
+              onPress={() => void learning.loadLessons(selectedTrack.id)}
+            >
+              <Lucide color={theme.colors.event} name="cloud-off" size={26} />
+              <Text className="text-center font-body text-sm leading-5 text-muted">
+                Não foi possível carregar as aulas. Toque para tentar novamente.
+              </Text>
+            </Pressable>
+          ) : lessons.length > 0 ? (
             <View className="gap-3">
               <View className="gap-1 pb-1">
                 <Text className="font-label text-[11px] uppercase tracking-[2px] text-accent">
@@ -253,7 +289,7 @@ export function LearnPage({ accessToken }: LearnPageProps) {
                     isNext={stats?.nextLesson?.id === lesson.id}
                     isLast={index === lessons.length - 1}
                     lesson={lesson}
-                    onPress={() => setSelectedLessonId(lesson.id)}
+                    onPress={() => openLesson(lesson.id)}
                     progress={learning.progressByLessonId.get(lesson.id)}
                   />
                 ))}
@@ -332,7 +368,7 @@ export function LearnPage({ accessToken }: LearnPageProps) {
                 accessibilityLabel={`Continuar trilha ${continueTrack.title}`}
                 accessibilityRole="button"
                 className="flex-row items-center gap-4 rounded-panel border border-brand bg-surface p-4 active:opacity-80"
-                onPress={() => setSelectedTrackId(continueTrack.id)}
+                onPress={() => openTrack(continueTrack.id)}
               >
                 <View className="h-14 w-14 items-center justify-center rounded-full bg-surface-2">
                   <Lucide color={theme.colors.accent} name="play" size={22} />
@@ -398,7 +434,7 @@ export function LearnPage({ accessToken }: LearnPageProps) {
               learning.tracks.map((track) => (
                 <TrackCard
                   key={track.id}
-                  onPress={() => setSelectedTrackId(track.id)}
+                  onPress={() => openTrack(track.id)}
                   stats={learning.trackStats.get(track.id) ?? null}
                   track={track}
                 />
@@ -484,7 +520,7 @@ function LessonRow({
   progress,
   onPress,
 }: {
-  lesson: Lesson;
+  lesson: LessonSummary;
   index: number;
   isNext: boolean;
   isLast: boolean;

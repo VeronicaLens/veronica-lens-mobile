@@ -1,7 +1,7 @@
 import type {
+  DataResponse,
   ObservationRecommendation,
   ObservationRecommendationRequest,
-  ObservationRecommendationResponse,
 } from '../../../shared/api/index.ts';
 import { apiRequest } from '../../../shared/api/index.ts';
 
@@ -12,8 +12,8 @@ export async function getObservationRecommendation(
   input: ObservationRecommendationRequest,
   request: Request = apiRequest,
 ): Promise<ObservationRecommendation> {
-  const response = await request<ObservationRecommendationResponse>(
-    '/planning/observation-window',
+  const response = await request<DataResponse<ObservationRecommendation>>(
+    '/planning/recommendation',
     {
       method: 'POST',
       headers: { Authorization: `Bearer ${accessToken}` },

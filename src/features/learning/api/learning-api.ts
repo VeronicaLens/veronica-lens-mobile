@@ -1,49 +1,51 @@
 import type {
-  Lesson,
-  LessonProgress,
-  LearningTrack,
-  LessonProgressResponse,
-  LessonProgressListResponse,
+  DataResponse,
   LearningProgressStatus,
-  LearningTracksResponse,
-  LessonsResponse,
+  LearningTrack,
+  LearningTrackDetail,
+  LessonDetail,
+  LessonProgressUpdate,
 } from '../../../shared/api/index.ts';
 import { apiRequest } from '../../../shared/api/index.ts';
 
 type Request = <T>(path: string, init?: RequestInit) => Promise<T>;
 
+function authorization(accessToken: string) {
+  return { Authorization: `Bearer ${accessToken}` };
+}
+
 export async function getLearningTracks(
   accessToken: string,
   request: Request = apiRequest,
 ): Promise<LearningTrack[]> {
-  return (
-    await request<LearningTracksResponse>('/learning/tracks', {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    })
-  ).data;
+  const response = await request<DataResponse<{ tracks: LearningTrack[] }>>('/learning/tracks', {
+    headers: authorization(accessToken),
+  });
+  return response.data.tracks;
 }
 
-export async function getLessons(
+export async function getLearningTrack(
   accessToken: string,
-  trackId: string,
+  slug: string,
   request: Request = apiRequest,
-): Promise<Lesson[]> {
-  return (
-    await request<LessonsResponse>(`/learning/tracks/${trackId}/lessons`, {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    })
-  ).data;
+): Promise<LearningTrackDetail> {
+  const response = await request<DataResponse<{ track: LearningTrackDetail }>>(
+    `/learning/tracks/${encodeURIComponent(slug)}`,
+    { headers: authorization(accessToken) },
+  );
+  return response.data.track;
 }
 
-export async function getLearningProgress(
+export async function getLearningLesson(
   accessToken: string,
+  lessonId: string,
   request: Request = apiRequest,
-): Promise<LessonProgress[]> {
-  return (
-    await request<LessonProgressListResponse>('/learning/progress', {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    })
-  ).data;
+): Promise<LessonDetail> {
+  const response = await request<DataResponse<{ lesson: LessonDetail }>>(
+    `/learning/lessons/${encodeURIComponent(lessonId)}`,
+    { headers: authorization(accessToken) },
+  );
+  return response.data.lesson;
 }
 
 export async function upsertLessonProgress(
@@ -51,12 +53,14 @@ export async function upsertLessonProgress(
   lessonId: string,
   input: { status: LearningProgressStatus; progressPercent: number },
   request: Request = apiRequest,
-): Promise<LessonProgress> {
-  return (
-    await request<LessonProgressResponse>(`/learning/lessons/${lessonId}/progress`, {
+): Promise<LessonProgressUpdate> {
+  const response = await request<DataResponse<{ progress: LessonProgressUpdate }>>(
+    `/learning/lessons/${encodeURIComponent(lessonId)}/progress`,
+    {
       method: 'PUT',
-      headers: { Authorization: `Bearer ${accessToken}` },
+      headers: authorization(accessToken),
       body: JSON.stringify(input),
-    })
-  ).data;
+    },
+  );
+  return response.data.progress;
 }

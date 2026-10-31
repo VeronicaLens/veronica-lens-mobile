@@ -1,5 +1,10 @@
-import { ComingSoonScreen } from '../../widgets/coming-soon/index.ts';
+import { useAuthSessionContext } from '../../features/auth/index.ts';
+import { LearnPage } from '../../pages/learn/index.ts';
 
 export default function LearnTab() {
-  return <ComingSoonScreen title="Aprender" />;
+  const auth = useAuthSessionContext();
+
+  if (!auth.session) return null;
+
+  return <LearnPage accessToken={auth.session.accessToken} />;
 }

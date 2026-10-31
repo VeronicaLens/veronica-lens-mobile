@@ -5,15 +5,10 @@ import type { Session } from '../../../shared/api/index.ts';
 import { clearSession, loadSession, saveSession, type SessionStorage } from './session-storage.ts';
 
 const session: Session = {
-  id: '60000000-0000-4000-8000-000000000001',
   user: {
     id: '40000000-0000-4000-8000-000000000001',
     email: 'user@example.com',
     displayName: null,
-    avatarUrl: null,
-    role: 'user',
-    createdAt: '2026-09-05T12:00:00.000Z',
-    updatedAt: '2026-09-05T12:00:00.000Z',
   },
   accessToken: 'access-token',
   refreshToken: 'refresh-token',

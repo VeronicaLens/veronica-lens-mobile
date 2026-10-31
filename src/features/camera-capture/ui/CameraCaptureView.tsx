@@ -8,6 +8,7 @@ import {
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { Platform, StyleSheet, View } from 'react-native';
 
+import { theme } from '../../../shared/config/index.ts';
 import {
   CameraCaptureFailure,
   cameraFailureMessage,
@@ -208,5 +209,5 @@ export const CameraCaptureView = forwardRef<CameraCaptureHandle, CameraCaptureVi
 );
 
 const styles = StyleSheet.create({
-  unavailable: { backgroundColor: '#080B14' },
+  unavailable: { backgroundColor: theme.colors.background },
 });

@@ -9,6 +9,7 @@ module.exports = {
         surface: '#11182B',
         elevated: '#171E33',
         'surface-2': '#202943',
+        chip: '#292354',
         border: '#2A3555',
         brand: '#6D5DFC',
         accent: '#B5ACFF',

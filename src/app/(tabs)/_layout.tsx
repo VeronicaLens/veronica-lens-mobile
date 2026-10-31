@@ -1,9 +1,11 @@
 import { Lucide, type LucideIconName } from '@react-native-vector-icons/lucide';
 import * as Linking from 'expo-linking';
-import { Tabs } from 'expo-router';
+import { Tabs, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 
 import { getRecoveryAccessToken, useAuthSessionContext } from '../../features/auth/index.ts';
+import { useNotificationBootstrap } from '../../features/notifications/index.ts';
+import { ProfileDisplayNameProvider } from '../../features/profile/index.ts';
 import { AuthPage } from '../../pages/auth/index.ts';
 import { theme } from '../../shared/config/index.ts';
 import { LoadingScreen } from '../../widgets/loading-screen/index.ts';
@@ -20,8 +22,14 @@ const hiddenTabs = ['events/index', 'events/[id]'];
 
 export default function TabsLayout() {
   const auth = useAuthSessionContext();
+  const router = useRouter();
   const [recoveryAccessToken, setRecoveryAccessToken] = useState<string | null>(null);
 
+  useNotificationBootstrap({
+    accessToken: auth.status === 'authenticated' ? (auth.session?.accessToken ?? null) : null,
+    isAnonymous: auth.status === 'anonymous',
+    onOpenEvent: (eventId) => router.push(`/events/${eventId}`),
+  });
   useEffect(() => {
     const handleUrl = (url: string | null) => setRecoveryAccessToken(getRecoveryAccessToken(url));
     void Linking.getInitialURL().then(handleUrl);
@@ -49,29 +57,34 @@ export default function TabsLayout() {
   }
 
   return (
-    <Tabs
-      screenOptions={{
-        headerShown: false,
-        tabBarActiveTintColor: theme.colors.accent,
-        tabBarInactiveTintColor: theme.colors.muted,
-        tabBarStyle: { backgroundColor: theme.colors.surface, borderTopColor: theme.colors.border },
-        tabBarLabelStyle: { fontSize: 9 },
-      }}
-    >
-      {tabs.map((tab) => (
-        <Tabs.Screen
-          key={tab.name}
-          name={tab.name}
-          options={{
-            title: tab.title,
-            ...(tab.name === 'camera' ? { tabBarStyle: { display: 'none' as const } } : {}),
-            tabBarIcon: ({ color }) => <Lucide color={color} name={tab.icon} size={19} />,
-          }}
-        />
-      ))}
-      {hiddenTabs.map((name) => (
-        <Tabs.Screen key={name} name={name} options={{ href: null }} />
-      ))}
-    </Tabs>
+    <ProfileDisplayNameProvider>
+      <Tabs
+        screenOptions={{
+          headerShown: false,
+          tabBarActiveTintColor: theme.colors.accent,
+          tabBarInactiveTintColor: theme.colors.muted,
+          tabBarStyle: {
+            backgroundColor: theme.colors.surface,
+            borderTopColor: theme.colors.border,
+          },
+          tabBarLabelStyle: { fontSize: 9 },
+        }}
+      >
+        {tabs.map((tab) => (
+          <Tabs.Screen
+            key={tab.name}
+            name={tab.name}
+            options={{
+              title: tab.title,
+              ...(tab.name === 'camera' ? { tabBarStyle: { display: 'none' as const } } : {}),
+              tabBarIcon: ({ color }) => <Lucide color={color} name={tab.icon} size={19} />,
+            }}
+          />
+        ))}
+        {hiddenTabs.map((name) => (
+          <Tabs.Screen key={name} name={name} options={{ href: null }} />
+        ))}
+      </Tabs>
+    </ProfileDisplayNameProvider>
   );
 }

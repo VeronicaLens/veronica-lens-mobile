@@ -18,7 +18,7 @@ const tabs: { name: string; title: string; icon: LucideIconName }[] = [
   { name: 'profile', title: 'Perfil', icon: 'user-round' },
 ];
 
-const hiddenTabs = ['events/index', 'events/[id]'];
+const hiddenTabs = ['events/index', 'events/[id]', 'conditions'];
 
 export default function TabsLayout() {
   const auth = useAuthSessionContext();

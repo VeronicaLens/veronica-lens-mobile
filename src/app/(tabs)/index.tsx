@@ -1,6 +1,7 @@
 import { useRouter } from 'expo-router';
 
 import { useAuthSessionContext } from '../../features/auth/index.ts';
+import { toConditionObserverParams } from '../../features/current-conditions/index.ts';
 import { useProfileDisplayName } from '../../features/profile/index.ts';
 import { HomePage } from '../../pages/home/index.ts';
 
@@ -20,7 +21,12 @@ export default function HomeTab() {
       onOpenEvent={(eventId) => router.push(`/events/${eventId}`)}
       onOpenEvents={() => router.push('/events')}
       onOpenHistory={() => router.navigate('/history')}
-      onOpenConditionSimulation={() => undefined}
+      onOpenConditionSimulation={(location) =>
+        router.push({
+          pathname: '/conditions',
+          params: location ? toConditionObserverParams(location) : {},
+        })
+      }
     />
   );
 }

@@ -64,6 +64,7 @@ export default function TabsLayout() {
           name={tab.name}
           options={{
             title: tab.title,
+            ...(tab.name === 'camera' ? { tabBarStyle: { display: 'none' as const } } : {}),
             tabBarIcon: ({ color }) => <Lucide color={color} name={tab.icon} size={19} />,
           }}
         />

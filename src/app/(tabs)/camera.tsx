@@ -1,5 +1,15 @@
-import { ComingSoonScreen } from '../../widgets/coming-soon/index.ts';
+import { useRouter } from 'expo-router';
+
+import { useAuthSessionContext } from '../../features/auth/index.ts';
+import { SkyGuidePage } from '../../pages/camera/index.ts';
 
 export default function CameraTab() {
-  return <ComingSoonScreen title="Câmera" />;
+  const auth = useAuthSessionContext();
+  const router = useRouter();
+
+  if (!auth.session) return null;
+
+  return (
+    <SkyGuidePage accessToken={auth.session.accessToken} onClose={() => router.navigate('/')} />
+  );
 }

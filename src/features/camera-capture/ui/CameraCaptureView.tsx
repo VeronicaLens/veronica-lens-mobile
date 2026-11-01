@@ -24,6 +24,14 @@ import {
   type AstroPhotoMetadata,
 } from '../model/assisted-capture.ts';
 
+// The lens and AWB need a few frames to settle after a manual change before capturing.
+const FOCUS_SETTLE_MS = 450;
+const WHITE_BALANCE_SETTLE_MS = 300;
+
+function waitForSettle(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
 export interface CapturedPhoto {
   uri: string;
   metadata: AstroPhotoMetadata;
@@ -139,7 +147,10 @@ export const CameraCaptureView = forwardRef<CameraCaptureHandle, CameraCaptureVi
                   setExposureBias: (value) => controller.setExposureBias(value),
                   setManualExposure: (exposureTimeSeconds, iso) =>
                     controller.setExposureLocked(exposureTimeSeconds, iso),
-                  setFocusLensPosition: (lensPosition) => controller.setFocusLocked(lensPosition),
+                  setFocusLensPosition: async (lensPosition) => {
+                    await controller.setFocusLocked(lensPosition);
+                    await waitForSettle(FOCUS_SETTLE_MS);
+                  },
                   setWhiteBalanceTemperature: async (kelvin) => {
                     const gains = controller.convertWhiteBalanceTemperatureAndTintValues({
                       temperature: kelvin,
@@ -152,6 +163,7 @@ export const CameraCaptureView = forwardRef<CameraCaptureHandle, CameraCaptureVi
                       greenGain: clampGain(gains.greenGain),
                       blueGain: clampGain(gains.blueGain),
                     });
+                    await waitForSettle(WHITE_BALANCE_SETTLE_MS);
                   },
                 })
               : {
@@ -169,8 +181,13 @@ export const CameraCaptureView = forwardRef<CameraCaptureHandle, CameraCaptureVi
                 {},
               ));
             } finally {
-              if (Platform.OS === 'android' && parameters.exposureMode === 'manual') {
-                await controller.setExposureLocked(0, 0).catch(() => undefined);
+              if (Platform.OS === 'android') {
+                if (parameters.exposureMode === 'manual') {
+                  await controller.setExposureLocked(0, 0).catch(() => undefined);
+                }
+                if (controller.focusMode === 'locked' || controller.whiteBalanceMode === 'locked') {
+                  await controller.resetFocus().catch(() => undefined);
+                }
               }
             }
             return {

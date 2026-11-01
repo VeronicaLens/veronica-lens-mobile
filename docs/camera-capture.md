@@ -52,6 +52,11 @@ sem impedir a captura básica. No Android, ISO e obturador usam Camera2 Interop 
 câmera ativa anuncia `MANUAL_SENSOR` e faixas válidas. A exposição automática é restaurada após a
 foto. O patch nativo do VisionCamera exige um novo Development Build após sua instalação.
 
+Foco manual (`LENS_FOCUS_DISTANCE` com `AF_MODE_OFF`) aparece quando a câmera informa distância
+mínima de foco e o modo AF desligado. O balanço de brancos usa os presets `AWB_MODE_*` anunciados
+pela câmera (incandescente, fluorescente, luz do dia, nublado, sombra); a temperatura escolhida é
+aproximada pelo preset mais próximo. Foco e balanço de brancos voltam ao automático após a foto.
+
 O resultado `CapturedPhoto` acompanha metadados internos com instante UTC, câmera ativa e os
 parâmetros efetivamente aplicados. ISO e tempo de exposição são registrados como `automatic`
 quando a câmera não oferece controle manual ou quando a aplicação dos valores falha. Esses metadados ficam prontos para persistência ou

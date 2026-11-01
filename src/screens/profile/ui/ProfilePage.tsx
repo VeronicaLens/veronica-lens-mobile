@@ -16,6 +16,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { captureDeviceLocation } from '../../../features/device-location/index.ts';
 import { useProfile } from '../../../features/profile/index.ts';
 import {
   deactivateStoredPushDevice,
@@ -183,9 +184,7 @@ export function ProfilePage({
   const [photoMessage, setPhotoMessage] = useState<string | null>(null);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [displayName, setDisplayName] = useState('');
-  const [locationName, setLocationName] = useState('');
-  const [latitude, setLatitude] = useState('');
-  const [longitude, setLongitude] = useState('');
+  const [capturingLocation, setCapturingLocation] = useState(false);
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [measurementUnit, setMeasurementUnit] = useState<MeasurementUnit>('metric');
   const [language, setLanguage] = useState<AppLanguage>('pt-BR');
@@ -207,9 +206,6 @@ export function ProfilePage({
     if (!profile) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- hydrate editable form from API.
     setDisplayName(profile.displayName ?? '');
-    setLocationName(profile.locationName ?? '');
-    setLatitude(profile.latitude?.toString() ?? '');
-    setLongitude(profile.longitude?.toString() ?? '');
     setNotificationsEnabled(profile.notificationsEnabled);
     setMeasurementUnit(profile.measurementUnit);
     setLanguage(profile.language);
@@ -232,33 +228,39 @@ export function ProfilePage({
     }
   };
 
-  const changeLocation = async (enabled: boolean) => {
-    if (enabled) {
-      setEditing(true);
-      return;
+  const saveCurrentLocation = async () => {
+    setFormError(null);
+    setCapturingLocation(true);
+    try {
+      const captured = await captureDeviceLocation();
+      if (captured.status !== 'captured') {
+        setFormError(captured.message);
+        return;
+      }
+      const updated = await save({
+        latitude: captured.location.latitudeDegrees,
+        longitude: captured.location.longitudeDegrees,
+        locationName: captured.placeName,
+      });
+      if (updated) onSaved(updated);
+    } finally {
+      setCapturingLocation(false);
     }
+  };
+
+  const clearLocation = async () => {
+    setFormError(null);
     const updated = await save({ latitude: null, longitude: null, locationName: null });
     if (updated) onSaved(updated);
   };
 
+  const changeLocation = (enabled: boolean) => (enabled ? saveCurrentLocation() : clearLocation());
+
   const handleSave = async () => {
-    const latitudeValue = latitude.trim() ? Number(latitude.replace(',', '.')) : null;
-    const longitudeValue = longitude.trim() ? Number(longitude.replace(',', '.')) : null;
-    if (
-      (latitudeValue === null) !== (longitudeValue === null) ||
-      Number.isNaN(latitudeValue) ||
-      Number.isNaN(longitudeValue)
-    ) {
-      setFormError('Informe latitude e longitude válidas em conjunto.');
-      return;
-    }
     setFormError(null);
     setSaved(false);
     const updated = await save({
       displayName: displayName.trim() || null,
-      locationName: locationName.trim() || null,
-      latitude: latitudeValue,
-      longitude: longitudeValue,
       notificationsEnabled,
       measurementUnit,
       language,
@@ -271,6 +273,7 @@ export function ProfilePage({
   };
 
   const initial = (profile?.displayName?.trim()[0] ?? email.trim()[0] ?? 'V').toUpperCase();
+  const hasSavedLocation = profile?.latitude != null && profile.longitude != null;
 
   const pickAvatar = async () => {
     if (uploadingAvatar) return;
@@ -413,34 +416,38 @@ export function ProfilePage({
                     onChangeText={setDisplayName}
                     placeholder="Como devemos chamar você?"
                   />
-                  <TextField
-                    icon="map-pin"
-                    label="Local"
-                    value={locationName}
-                    onChangeText={setLocationName}
-                    placeholder="Ex.: São Paulo"
-                  />
-                  <View className="flex-row gap-3">
-                    <View className="flex-1">
-                      <TextField
-                        icon="locate-fixed"
-                        label="Latitude"
-                        value={latitude}
-                        onChangeText={setLatitude}
-                        keyboardType="numbers-and-punctuation"
-                        placeholder="-23.5505"
-                      />
+                  <View className="gap-3 rounded-control border border-border bg-surface-2 p-4">
+                    <View className="flex-row items-center gap-3">
+                      <Lucide color={theme.colors.info} name="map-pin" size={18} />
+                      <View className="flex-1 gap-0.5">
+                        <Text className="font-label text-xs text-ink">Localização</Text>
+                        <Text className="font-body text-[11px] leading-4 text-muted">
+                          {hasSavedLocation
+                            ? (profile.locationName ?? 'Localização salva pelo GPS')
+                            : 'Capturada automaticamente pelo GPS do aparelho.'}
+                        </Text>
+                      </View>
                     </View>
-                    <View className="flex-1">
-                      <TextField
-                        icon="locate-fixed"
-                        label="Longitude"
-                        value={longitude}
-                        onChangeText={setLongitude}
-                        keyboardType="numbers-and-punctuation"
-                        placeholder="-46.6333"
+                    <Button
+                      busy={capturingLocation}
+                      disabled={saving}
+                      icon="locate-fixed"
+                      label={
+                        hasSavedLocation
+                          ? 'Atualizar pela minha localização'
+                          : 'Usar minha localização'
+                      }
+                      onPress={() => void saveCurrentLocation()}
+                      variant="secondary"
+                    />
+                    {hasSavedLocation ? (
+                      <Button
+                        disabled={saving || capturingLocation}
+                        label="Remover localização"
+                        onPress={() => void clearLocation()}
+                        variant="ghost"
                       />
-                    </View>
+                    ) : null}
                   </View>
                 </View>
                 {(formError || error) && (
@@ -507,14 +514,6 @@ export function ProfilePage({
                 <View className="gap-3">
                   <Text className="font-label text-base text-ink">Preferências</Text>
                   <PreferenceRow
-                    disabled
-                    icon="moon"
-                    iconColor={theme.colors.accent}
-                    title="Modo noturno"
-                    subtitle="Preservar visão noturna"
-                    value
-                  />
-                  <PreferenceRow
                     icon="bell"
                     iconColor={theme.colors.info}
                     title="Notificações"
@@ -523,11 +522,16 @@ export function ProfilePage({
                     onChange={(value) => void persistNotifications(value)}
                   />
                   <PreferenceRow
+                    disabled={capturingLocation || saving}
                     icon="map-pin"
                     iconColor={theme.colors.info}
                     title="Localização"
-                    subtitle={profile.locationName ?? 'Usar durante observação'}
-                    value={profile.latitude !== null && profile.longitude !== null}
+                    subtitle={
+                      capturingLocation
+                        ? 'Obtendo sua localização...'
+                        : (profile.locationName ?? 'Salvar minha localização pelo GPS')
+                    }
+                    value={hasSavedLocation}
                     onChange={(value) => void changeLocation(value)}
                   />
                   {saving && <ActivityIndicator color={theme.colors.primary} />}

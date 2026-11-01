@@ -10,8 +10,6 @@ export {
   useGalleryThumbnails,
   type GalleryThumbnails,
 } from './model/gallery-thumbnails.ts';
-export { usePlaceName, type PlaceNameState } from './model/use-place-name.ts';
-export { formatPlaceName } from './model/place-name.ts';
 export {
   buildPhotoGallery,
   describeCapture,

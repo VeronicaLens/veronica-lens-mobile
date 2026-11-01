@@ -1,5 +1,5 @@
 import { Lucide, type LucideIconName } from '@react-native-vector-icons/lucide';
-import { memo, useCallback, useMemo, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -10,6 +10,7 @@ import {
   Text,
   View,
   useWindowDimensions,
+  type ViewToken,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -28,6 +29,10 @@ import { useImageLoadStatus } from './use-image-load-status.ts';
 
 const GRID_COLUMNS = 3;
 const GRID_GAP = 2;
+// Thumbnails are generated for what is on screen plus a few rows ahead, never the whole library.
+const PREFETCH_PHOTOS = GRID_COLUMNS * 3;
+const INITIAL_PHOTOS = GRID_COLUMNS * 6;
+const viewabilityConfig = { itemVisiblePercentThreshold: 1 } as const;
 
 type Category = ObservationCategory | 'all';
 type GalleryRow =
@@ -49,14 +54,20 @@ const categoryOptions: { id: Category; label: string; icon: LucideIconName }[] =
 
 interface ObservationHistoryPageProps {
   accessToken: string;
+  /** False while another tab is in front; coming back refreshes the list. */
+  focused?: boolean;
 }
 
-export function ObservationHistoryPage({ accessToken }: ObservationHistoryPageProps) {
+export function ObservationHistoryPage({
+  accessToken,
+  focused = true,
+}: ObservationHistoryPageProps) {
   const { width } = useWindowDimensions();
   const [grouping, setGrouping] = useState<GalleryGrouping>('day');
   const [category, setCategory] = useState<Category>('all');
   const [viewerPhotoId, setViewerPhotoId] = useState<string | null>(null);
   const [deletingPhotoId, setDeletingPhotoId] = useState<string | null>(null);
+  const [visibleRowKeys, setVisibleRowKeys] = useState<readonly string[]>([]);
   const {
     observations,
     loading,
@@ -69,17 +80,29 @@ export function ObservationHistoryPage({ accessToken }: ObservationHistoryPagePr
     removeObservation,
   } = useObservationHistory(accessToken);
 
+  // Tabs stay mounted, so photos taken meanwhile would not show without a refresh on return.
+  const wasFocused = useRef(true);
+  useEffect(() => {
+    if (focused && !wasFocused.current) void refresh();
+    wasFocused.current = focused;
+  }, [focused, refresh]);
+
   const gallery = useMemo(
     () => buildPhotoGallery(observations, { grouping, category }),
     [category, grouping, observations],
   );
   const rows = useMemo(() => toRows(gallery.sections), [gallery.sections]);
-  const thumbnails = useGalleryThumbnails(gallery.photos);
-  // FlatList counts ListHeaderComponent as index 0, so section headers start at index 1.
-  const stickyHeaderIndices = useMemo(
-    () => rows.flatMap((row, index) => (row.type === 'header' ? [index + 1] : [])),
-    [rows],
+  const onViewableItemsChanged = useCallback(
+    ({ viewableItems }: { viewableItems: ViewToken<GalleryRow>[] }) => {
+      setVisibleRowKeys(viewableItems.flatMap((token) => (token.item ? [token.item.key] : [])));
+    },
+    [],
   );
+  const wantedPhotos = useMemo(
+    () => selectWantedPhotos(gallery.photos, rows, visibleRowKeys),
+    [gallery.photos, rows, visibleRowKeys],
+  );
+  const thumbnails = useGalleryThumbnails(wantedPhotos);
   const tileSize = Math.floor((width - GRID_GAP * (GRID_COLUMNS - 1)) / GRID_COLUMNS);
   const viewerIndex = viewerPhotoId
     ? gallery.photos.findIndex((photo) => photo.id === viewerPhotoId)
@@ -136,8 +159,9 @@ export function ObservationHistoryPage({ accessToken }: ObservationHistoryPagePr
         onEndReached={() => void loadMore()}
         onEndReachedThreshold={0.6}
         onRefresh={() => void refresh()}
+        onViewableItemsChanged={onViewableItemsChanged}
         refreshing={loading && observations.length > 0}
-        stickyHeaderIndices={stickyHeaderIndices}
+        viewabilityConfig={viewabilityConfig}
         windowSize={7}
         ListHeaderComponent={
           <View className="gap-4 px-4 pb-3 pt-4">
@@ -374,6 +398,29 @@ const GalleryTile = memo(function GalleryTile({
     </Pressable>
   );
 });
+
+function selectWantedPhotos(
+  photos: GalleryPhoto[],
+  rows: GalleryRow[],
+  visibleRowKeys: readonly string[],
+): GalleryPhoto[] {
+  const visible = new Set(visibleRowKeys);
+  const visibleIds = new Set(
+    rows
+      .flatMap((row) => (row.type === 'row' && visible.has(row.key) ? row.photos : []))
+      .map((photo) => photo.id),
+  );
+  if (visibleIds.size === 0) return photos.slice(0, INITIAL_PHOTOS);
+
+  let first = photos.length;
+  let last = -1;
+  photos.forEach((photo, index) => {
+    if (!visibleIds.has(photo.id)) return;
+    first = Math.min(first, index);
+    last = Math.max(last, index);
+  });
+  return photos.slice(first, last + 1 + PREFETCH_PHOTOS);
+}
 
 function toRows(sections: ReturnType<typeof buildPhotoGallery>['sections']): GalleryRow[] {
   return sections.flatMap<GalleryRow>((section) => {

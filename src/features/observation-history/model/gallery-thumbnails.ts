@@ -7,17 +7,24 @@ import {
   orientationToClockwiseDegrees,
   readJpegOrientation,
 } from '../lib/jpeg-orientation.ts';
+import { createSlotQueue } from '../lib/slot-queue.ts';
 
 const THUMBNAIL_SHORT_SIDE = 384;
 const THUMBNAIL_QUALITY = 78;
 const EXIF_HEADER_BYTES = 128 * 1024;
 const MAX_CONCURRENT_THUMBNAILS = 2;
+// A stalled download must not hold a slot forever and block every thumbnail behind it.
+const DOWNLOAD_TIMEOUT_MS = 45_000;
 const thumbnailDirectory = `${FileSystem.cacheDirectory ?? ''}gallery-thumbnails/`;
 
 const resolvedThumbnails = new Map<string, string>();
 const pendingThumbnails = new Map<string, Promise<string>>();
-const waitingForSlot: (() => void)[] = [];
-let activeThumbnails = 0;
+const thumbnailQueue = createSlotQueue(MAX_CONCURRENT_THUMBNAILS);
+
+/** Tells the queue which photos are on screen, in display order, so they are generated first. */
+export function prioritizeGalleryThumbnails(photoIds: readonly string[]): void {
+  thumbnailQueue.prioritize(photoIds);
+}
 
 /**
  * Returns a small, correctly rotated JPEG for the photo, generating it once from the original
@@ -30,7 +37,8 @@ export function getGalleryThumbnail(photoId: string, remoteUri: string): Promise
   const pending = pendingThumbnails.get(photoId);
   if (pending) return pending;
 
-  const request = withThumbnailSlot(() => createThumbnail(photoId, remoteUri))
+  const request = thumbnailQueue
+    .run(photoId, () => createThumbnail(photoId, remoteUri))
     .then((uri) => {
       resolvedThumbnails.set(photoId, uri);
       return uri;
@@ -66,6 +74,7 @@ export function useGalleryThumbnails(
 
   useEffect(() => {
     let cancelled = false;
+    prioritizeGalleryThumbnails(photos.map((photo) => photo.id));
     for (const photo of photos) {
       if (!photo.uri || resolvedThumbnails.has(photo.id) || failedThumbnails.has(photo.id)) {
         continue;
@@ -103,7 +112,10 @@ async function createThumbnail(photoId: string, remoteUri: string): Promise<stri
   );
   const source = `${thumbnailDirectory}${encodeURIComponent(photoId)}.source.jpg`;
   try {
-    const download = await FileSystem.downloadAsync(remoteUri, source);
+    const download = await withTimeout(
+      FileSystem.downloadAsync(remoteUri, source),
+      DOWNLOAD_TIMEOUT_MS,
+    );
     if (download.status < 200 || download.status >= 300) {
       throw new Error(`Thumbnail source download failed with status ${download.status}`);
     }
@@ -139,17 +151,20 @@ async function createThumbnail(photoId: string, remoteUri: string): Promise<stri
   }
 }
 
-async function withThumbnailSlot<T>(task: () => Promise<T>): Promise<T> {
-  if (activeThumbnails >= MAX_CONCURRENT_THUMBNAILS) {
-    await new Promise<void>((resolve) => waitingForSlot.push(resolve));
-  }
-  activeThumbnails += 1;
-  try {
-    return await task();
-  } finally {
-    activeThumbnails -= 1;
-    waitingForSlot.shift()?.();
-  }
+function withTimeout<T>(promise: Promise<T>, milliseconds: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('Thumbnail download timed out')), milliseconds);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error: unknown) => {
+        clearTimeout(timer);
+        reject(error instanceof Error ? error : new Error('Thumbnail download failed'));
+      },
+    );
+  });
 }
 
 function thumbnailPath(photoId: string): string {

@@ -13,11 +13,11 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { usePlaceName } from '../../../features/device-location/index.ts';
 import {
   categorizeObservation,
   describeCapture,
   observationCategoryConfig,
-  usePlaceName,
   type GalleryPhoto,
 } from '../../../features/observation-history/index.ts';
 import { theme } from '../../../shared/config/index.ts';

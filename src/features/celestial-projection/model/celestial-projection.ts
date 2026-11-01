@@ -1,4 +1,5 @@
 import type {
+  CameraFieldOfView,
   CelestialObjectPosition,
   HorizontalCoordinates,
   ProjectedCelestialObject,
@@ -14,6 +15,16 @@ interface Vector3 {
 
 const DEGREES_TO_RADIANS = Math.PI / 180;
 const VISIBILITY_EPSILON = 1e-10;
+
+export function zoomedFieldOfView(fieldOfView: CameraFieldOfView, zoom: number): CameraFieldOfView {
+  if (!Number.isFinite(zoom) || zoom <= 1) return fieldOfView;
+  const narrow = (degrees: number) =>
+    (2 * Math.atan(Math.tan((degrees * DEGREES_TO_RADIANS) / 2) / zoom)) / DEGREES_TO_RADIANS;
+  return {
+    horizontalDegrees: narrow(fieldOfView.horizontalDegrees),
+    verticalDegrees: narrow(fieldOfView.verticalDegrees),
+  };
+}
 
 export function projectCelestialToScreen(
   target: HorizontalCoordinates,

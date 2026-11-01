@@ -4,8 +4,26 @@ import { describe, it } from 'node:test';
 import {
   projectCelestialToScreen,
   projectVisibleCelestialObjects,
+  zoomedFieldOfView,
 } from './celestial-projection.ts';
 import type { ProjectionContext } from './celestial-projection.types.ts';
+
+describe('zoomedFieldOfView', () => {
+  const base = { horizontalDegrees: 45, verticalDegrees: 60 };
+
+  it('keeps the field of view at 1x zoom and ignores invalid zoom values', () => {
+    assert.deepEqual(zoomedFieldOfView(base, 1), base);
+    assert.deepEqual(zoomedFieldOfView(base, 0.6), base);
+    assert.deepEqual(zoomedFieldOfView(base, Number.NaN), base);
+  });
+
+  it('narrows the field by the zoom factor using the tangent relation', () => {
+    const zoomed = zoomedFieldOfView(base, 2);
+    const expected = (2 * Math.atan(Math.tan((45 * Math.PI) / 360) / 2) * 180) / Math.PI;
+    assert.ok(Math.abs(zoomed.horizontalDegrees - expected) < 1e-9);
+    assert.ok(zoomed.verticalDegrees < base.verticalDegrees / 1.8);
+  });
+});
 
 const context: ProjectionContext = {
   orientation: { headingDegrees: 0, pitchDegrees: 0, rollDegrees: 0 },

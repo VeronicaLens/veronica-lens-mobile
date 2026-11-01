@@ -17,6 +17,7 @@ import {
   constellationFigures,
   projectConstellationFigure,
   projectVisibleCelestialObjects,
+  zoomedFieldOfView,
   type ScreenViewport,
 } from '../../../features/celestial-projection/index.ts';
 import {
@@ -42,7 +43,11 @@ import {
   type CaptureTipAction,
   type CaptureTipTopic,
 } from '../../../features/camera-capture/index.ts';
-import { useDeviceLocation } from '../../../features/device-location/index.ts';
+import {
+  applyDeclination,
+  useDeviceLocation,
+  useMagneticDeclination,
+} from '../../../features/device-location/index.ts';
 import { useDeviceOrientation } from '../../../features/device-orientation/index.ts';
 import {
   describeRecommendation,
@@ -128,6 +133,17 @@ export function SkyGuidePage({ accessToken, isActive = true, onClose }: SkyGuide
   const insets = useSafeAreaInsets();
   const location = useDeviceLocation(cameraGranted);
   const orientation = useDeviceOrientation(cameraGranted && isActive);
+  const declination = useMagneticDeclination(location.location, cameraGranted && isActive);
+  const trueOrientation = useMemo(
+    () =>
+      orientation.orientation && declination !== null
+        ? {
+            ...orientation.orientation,
+            headingDegrees: applyDeclination(orientation.orientation.headingDegrees, declination),
+          }
+        : orientation.orientation,
+    [declination, orientation.orientation],
+  );
   const sky = useSkyGuidePositions(accessToken, location.location, location.status === 'active');
   const planning = useObservationRecommendation(accessToken, selectedId, location.location);
   const handleCameraError = useCallback((message: string) => {
@@ -162,8 +178,13 @@ export function SkyGuidePage({ accessToken, isActive = true, onClose }: SkyGuide
     void flushPendingAstroPhotos(accessToken).catch(() => undefined);
   }, [accessToken]);
 
+  const fieldOfView = useMemo(
+    () => zoomedFieldOfView(CAMERA_FIELD_OF_VIEW, cameraZoom),
+    [cameraZoom],
+  );
+
   const projectedObjects = useMemo(() => {
-    if (!viewport || !orientation.orientation) return [];
+    if (!viewport || !trueOrientation) return [];
     const normalizedQuery = query.trim().toLocaleLowerCase('pt-BR');
     const candidates: ProjectionCandidate[] = sky.positions
       .filter((object) => object.name.toLocaleLowerCase('pt-BR').includes(normalizedQuery))
@@ -175,22 +196,22 @@ export function SkyGuidePage({ accessToken, isActive = true, onClose }: SkyGuide
       }));
 
     return projectVisibleCelestialObjects(candidates, {
-      orientation: orientation.orientation,
-      fieldOfView: CAMERA_FIELD_OF_VIEW,
+      orientation: trueOrientation,
+      fieldOfView,
       viewport,
     });
-  }, [orientation.orientation, query, sky.positions, viewport]);
+  }, [fieldOfView, trueOrientation, query, sky.positions, viewport]);
 
   const observerLocation = location.location;
   const projectedFigures = useMemo(() => {
-    if (!skyOverlayEnabled || !viewport || !orientation.orientation || !observerLocation) {
+    if (!skyOverlayEnabled || !viewport || !trueOrientation || !observerLocation) {
       return [];
     }
     const normalizedQuery = query.trim().toLocaleLowerCase('pt-BR');
     const observedAt = new Date();
     const context = {
-      orientation: orientation.orientation,
-      fieldOfView: CAMERA_FIELD_OF_VIEW,
+      orientation: trueOrientation,
+      fieldOfView,
       viewport,
     };
     return constellationFigures.flatMap((figure) => {
@@ -200,8 +221,9 @@ export function SkyGuidePage({ accessToken, isActive = true, onClose }: SkyGuide
       return projection ? [projection] : [];
     });
   }, [
+    fieldOfView,
     observerLocation,
-    orientation.orientation,
+    trueOrientation,
     query,
     sky.positions,
     skyOverlayEnabled,
@@ -223,14 +245,14 @@ export function SkyGuidePage({ accessToken, isActive = true, onClose }: SkyGuide
         capabilities: cameraCapabilities,
         zoom: cameraZoom,
         zoomRange: cameraZoomRange,
-        orientation: orientation.orientation,
+        orientation: trueOrientation,
       }),
     [
       assistedPlan,
       cameraCapabilities,
       cameraZoom,
       cameraZoomRange,
-      orientation.orientation,
+      trueOrientation,
       selectedObject,
       selectedProfileId,
     ],

@@ -17,8 +17,10 @@ import {
   useEvent,
   useUpcomingEvents,
 } from '../../../features/astronomical-events/index.ts';
+import { useDeviceLocation } from '../../../features/device-location/index.ts';
 import type { AstronomicalEvent } from '../../../shared/api/index.ts';
 import { theme } from '../../../shared/config/index.ts';
+import { SkyTodayCard } from '../../../widgets/sky-today/index.ts';
 import { EventDetailPage } from './EventDetailPage.tsx';
 
 const backgroundImage = require('../../../../assets/loading-background.jpeg') as number;
@@ -57,6 +59,7 @@ export function EventsPage({
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const insets = useSafeAreaInsets();
   const events = useUpcomingEvents(accessToken, periodDays);
+  const deviceLocation = useDeviceLocation();
   const linkedEvent = useEvent(accessToken, initialEventId ?? null);
   const normalizedSearch = search.trim().toLocaleLowerCase('pt-BR');
   const availableTypes = useMemo(
@@ -155,6 +158,12 @@ export function EventsPage({
             </ImageBackground>
 
             <View className="gap-5 px-5">
+              <SkyTodayCard
+                accessToken={accessToken}
+                location={deviceLocation.location}
+                locationMessage={deviceLocation.fallbackMessage}
+                onRetryLocation={deviceLocation.retry}
+              />
               <View className="flex-row items-center gap-3">
                 <Pressable
                   accessibilityLabel="Buscar eventos"

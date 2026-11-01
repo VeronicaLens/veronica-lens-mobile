@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 
 export interface RequestGuard {
   /** Starts a new request generation and invalidates every older one. */
@@ -30,5 +30,7 @@ export function useRequestGuard(): RequestGuard {
     [],
   );
 
-  return { begin, current, isCurrent };
+  // A stable identity matters: hooks list the guard in effect dependencies, and a new object on
+  // every render would restart their requests on every render.
+  return useMemo(() => ({ begin, current, isCurrent }), [begin, current, isCurrent]);
 }

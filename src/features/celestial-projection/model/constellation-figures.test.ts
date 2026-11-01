@@ -35,6 +35,18 @@ describe('equatorialToHorizontal', () => {
     assert.ok(Math.abs(result.altitudeDegrees - Math.abs(observer.latitudeDegrees)) < 1e-6);
     assert.ok(Math.abs(result.azimuthDegrees - 180) < 1e-6);
   });
+
+  it('matches the published worked example for Venus (Meeus, Astronomical Algorithms, ex. 13.b)', () => {
+    const result = equatorialToHorizontal(
+      { rightAscensionDegrees: 347.3193, declinationDegrees: -6.7199 },
+      { latitudeDegrees: 38.9211, longitudeDegrees: -77.0656 },
+      new Date('1987-04-10T19:21:00.000Z'),
+    );
+
+    // Meeus measures azimuth from the south (68.0337°); the app measures it from the north.
+    assert.ok(Math.abs(result.altitudeDegrees - 15.1249) < 0.02);
+    assert.ok(Math.abs(result.azimuthDegrees - 248.0337) < 0.02);
+  });
 });
 
 describe('constellationFigures', () => {

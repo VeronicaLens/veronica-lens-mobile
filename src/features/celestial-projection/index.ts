@@ -2,6 +2,7 @@ export {
   projectCelestialDirection,
   projectCelestialToScreen,
   projectVisibleCelestialObjects,
+  zoomedFieldOfView,
 } from './model/celestial-projection.ts';
 export {
   constellationFigures,

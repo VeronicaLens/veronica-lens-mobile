@@ -17,6 +17,7 @@ import { useCurrentConditions } from '../../../features/current-conditions/index
 import { useDeviceLocation, type DeviceLocation } from '../../../features/device-location/index.ts';
 import type { AstronomicalEvent, ObservationRating } from '../../../shared/api/index.ts';
 import { theme } from '../../../shared/config/index.ts';
+import { SkyTodayCard } from '../../../widgets/sky-today/index.ts';
 
 const backgroundImage = require('../../../../assets/loading-background.jpeg') as number;
 
@@ -181,6 +182,13 @@ export function HomePage({
             </Pressable>
           </View>
 
+          <SkyTodayCard
+            accessToken={accessToken}
+            location={location.location}
+            locationMessage={location.fallbackMessage}
+            onRetryLocation={location.retry}
+          />
+
           <View className="gap-3">
             <View className="flex-row items-center justify-between">
               <Text className="font-label text-[11px] uppercase tracking-[2px] text-accent">
@@ -228,7 +236,8 @@ export function HomePage({
                 onPress={onOpenEvents}
               >
                 <Text className="font-body text-sm leading-5 text-muted">
-                  Acompanhe eclipses, chuvas de meteoros e outros eventos do céu.
+                  Nenhum evento especial agendado por enquanto. Eclipses e chuvas de meteoros
+                  aparecem aqui quando forem publicados.
                 </Text>
               </Pressable>
             )}

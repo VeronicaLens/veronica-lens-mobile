@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1200" viewBox="0 0 1200 1200" fill="none" role="img" aria-labelledby="title">
+  <title id="title">VeronicaLens</title>
+  <defs>
+    <clipPath id="front"><rect x="-700" y="0" width="1400" height="400" /></clipPath>
+    <clipPath id="back"><rect x="-700" y="-400" width="1400" height="400" /></clipPath>
+    <mask id="outside-lens" maskUnits="userSpaceOnUse" x="-100" y="-100" width="1500" height="1200">
+      <rect x="-100" y="-100" width="1500" height="1200" fill="#FFFFFF" />
+      <circle cx="545" cy="404" r="289" fill="#000000" />
+    </mask>
+  </defs>
+
+  <g transform="translate(55 196)" color="currentColor">
+    <g mask="url(#outside-lens)">
+      <g transform="translate(578 420) rotate(-18)" clip-path="url(#back)">
+        <path
+          fill="currentColor"
+          fill-rule="evenodd"
+          d="M-565 0A565 182 0 1 0 565 0A565 182 0 1 0 -565 0ZM-533 -10A533 168 0 1 1 533 -10A533 168 0 1 1 -533 -10Z"
+        />
+      </g>
+    </g>
+
+    <circle cx="545" cy="404" r="275" stroke="currentColor" stroke-width="24" />
+    <circle cx="545" cy="404" r="256" stroke="currentColor" stroke-opacity="0.85" stroke-width="3" />
+    <g stroke="currentColor" stroke-opacity="0.9" stroke-width="4" stroke-linecap="round">
+      <path d="M385.1 276.1A208 208 0 0 1 468.5 205.8" />
+      <path d="M621.5 205.8A208 208 0 0 1 704.9 276.1" />
+      <path d="M704.9 531.9A208 208 0 0 1 621.5 602.2" />
+      <path d="M468.5 602.2A208 208 0 0 1 385.1 531.9" />
+    </g>
+
+    <path
+      d="M545 189C545 366 583 404 755 404C583 404 545 442 545 619C545 442 507 404 335 404C507 404 545 366 545 189Z"
+      fill="currentColor"
+    />
+
+    <path
+      d="M545 79V179M545 629V729M220 404H320M770 404H870"
+      stroke="currentColor"
+      stroke-width="12"
+      stroke-linecap="round"
+    />
+
+    <g transform="translate(578 420) rotate(-18)" clip-path="url(#front)">
+      <path
+        fill="currentColor"
+        fill-rule="evenodd"
+        d="M-565 0A565 182 0 1 0 565 0A565 182 0 1 0 -565 0ZM-533 -10A533 168 0 1 1 533 -10A533 168 0 1 1 -533 -10Z"
+      />
+    </g>
+
+    <circle cx="958" cy="191" r="34" fill="currentColor" />
+  </g>
+</svg>

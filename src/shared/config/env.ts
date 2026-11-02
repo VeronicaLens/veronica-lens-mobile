@@ -40,6 +40,13 @@ export function parsePublicEnvironment(source: PublicEnvSource): PublicEnvironme
 let cachedEnvironment: PublicEnvironment | undefined;
 
 export function getPublicEnvironment(): PublicEnvironment {
-  cachedEnvironment ??= parsePublicEnvironment(process.env);
+  cachedEnvironment ??= parsePublicEnvironment({
+    EXPO_PUBLIC_API_URL: process.env.EXPO_PUBLIC_API_URL,
+    EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID:
+      process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
+    EXPO_PUBLIC_PRIVACY_POLICY_URL:
+      process.env.EXPO_PUBLIC_PRIVACY_POLICY_URL,
+  });
+
   return cachedEnvironment;
 }

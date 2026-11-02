@@ -87,7 +87,6 @@ export function HomePage({
                   Condições de observação
                 </Text>
               </View>
-              <Lucide color={theme.colors.muted} name="chevron-right" size={18} />
             </Pressable>
 
             {conditions.conditions ? (

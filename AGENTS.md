@@ -29,6 +29,19 @@ Run lint and typecheck before declaring any task done.
 - Import `Link`, `router`, and `useLocalSearchParams` from `expo-router`.
 - Docs: https://docs.expo.dev/router/introduction.md
 
+## Architecture: Feature-Sliced Design
+
+Always prioritize Feature-Sliced Design (FSD) when adding or moving code:
+
+- Layers, from top to bottom: `src/app` (Expo Router routes and `_layout.tsx` only) → `src/core` (FSD "app" layer: providers, global styles, store) → `src/screens` (FSD "pages") → `src/features` → `src/shared`. A layer imports only from layers below it.
+- Expo Router turns every `.ts`/`.tsx` file in `src/app/` into a route. Never put providers, stores, styles or helpers there; use `src/core/`. Do not change the router root directory.
+- Route files in `src/app/` stay thin and only re-export a screen, e.g. `export { HomeScreen as default } from '@/screens/home';`.
+- Each slice exposes a public API in `index.ts`. Outside the slice, import only from it (`@/features/auth`, `@/shared/ui`), never from internal paths.
+- Segments inside a slice: `ui/` (components), `model/` (types, hooks, state), `api/` (HTTP calls), `lib/` (pure helpers without React), `config/`.
+- Put reusable code without business rules in `src/shared/` (base components in `src/shared/ui`).
+- Style with NativeWind 4 (`className`, Tailwind CSS 3). Use theme colors from `tailwind.config.js` instead of hard-coded values and avoid `StyleSheet.create` in new code.
+- Never log, render or persist authentication tokens.
+
 ## Building with EAS
 
 Use EAS to build, sign, and submit the app in the cloud (`eas build`, `eas submit`) and to ship over-the-air updates (`eas update`) — no local Xcode or Android Studio required. Run EAS CLI as `bunx eas-cli <command>` in Bun projects, or `npx eas-cli@latest <command>` otherwise; substitute that for bare `eas` in docs examples.

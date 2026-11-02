@@ -1,0 +1,387 @@
+diff --git a/node_modules/react-native-vision-camera/android/src/main/java/com/margelo/nitro/camera/hybrids/HybridCameraController.kt b/node_modules/react-native-vision-camera/android/src/main/java/com/margelo/nitro/camera/hybrids/HybridCameraController.kt
+index 337601a..aa95f8b 100644
+--- a/node_modules/react-native-vision-camera/android/src/main/java/com/margelo/nitro/camera/hybrids/HybridCameraController.kt
++++ b/node_modules/react-native-vision-camera/android/src/main/java/com/margelo/nitro/camera/hybrids/HybridCameraController.kt
+@@ -2,12 +2,17 @@ package com.margelo.nitro.camera.hybrids
+ 
+ import android.animation.Animator
+ import android.animation.ValueAnimator
++import android.hardware.camera2.CameraCharacteristics
++import android.hardware.camera2.CaptureRequest
+ import androidx.camera.core.Camera
+ import androidx.camera.core.CameraState
+ import androidx.camera.core.FocusMeteringAction
+ import androidx.camera.core.LowLightBoostState
+ import androidx.camera.core.MeteringPoint
+ import androidx.camera.core.TorchState
++import androidx.camera.camera2.interop.Camera2CameraControl
++import androidx.camera.camera2.interop.Camera2CameraInfo
++import androidx.camera.camera2.interop.CaptureRequestOptions
+ import com.google.common.util.concurrent.ListenableFuture
+ import com.margelo.nitro.camera.CameraControllerConfiguration
+ import com.margelo.nitro.camera.ExposureMode
+@@ -33,6 +38,11 @@ import com.margelo.nitro.core.Promise
+ import com.margelo.nitro.core.resolve
+ import com.margelo.nitro.core.resolved
+ import java.util.concurrent.TimeUnit
++import kotlin.math.abs
++import kotlin.math.ln
++import kotlin.math.pow
++import kotlin.math.roundToInt
++import kotlin.math.roundToLong
+ 
+ class HybridCameraController(
+   val camera: Camera,
+@@ -41,6 +51,64 @@ class HybridCameraController(
+   private val cameraState: CameraState?
+     get() = camera.cameraInfo.cameraState.value
+   private var zoomAnimator: ValueAnimator? = null
++  private val camera2Info by lazy { Camera2CameraInfo.from(camera.cameraInfo) }
++  private val isoRange: android.util.Range<Int>?
++    get() = camera2Info.getCameraCharacteristic(CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE)
++  private val exposureTimeRange: android.util.Range<Long>?
++    get() = camera2Info.getCameraCharacteristic(CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE)
++  @Volatile private var currentIso = 0.0
++  @Volatile private var currentExposureDurationSeconds = 0.0
++
++  // Camera2 interop replaces the whole option set on every call, so every manual control is
++  // kept here and re-applied together.
++  @Volatile private var manualExposure: Pair<Long, Int>? = null
++  @Volatile private var manualFocusDiopters: Float? = null
++  @Volatile private var manualWhiteBalanceMode: Int? = null
++  @Volatile private var currentLensPosition = 0.0
++  @Volatile private var currentWhiteBalanceGains = WhiteBalanceGains(0.0, 0.0, 0.0)
++
++  private val minimumFocusDistance: Float
++    get() = camera2Info.getCameraCharacteristic(CameraCharacteristics.LENS_INFO_MINIMUM_FOCUS_DISTANCE) ?: 0f
++  private val supportsManualFocus: Boolean
++    get() =
++      minimumFocusDistance > 0f &&
++        camera2Info
++          .getCameraCharacteristic(CameraCharacteristics.CONTROL_AF_AVAILABLE_MODES)
++          ?.contains(CaptureRequest.CONTROL_AF_MODE_OFF) == true
++  private val availableWhiteBalancePresets: List<WhiteBalancePreset>
++    get() {
++      val modes =
++        camera2Info.getCameraCharacteristic(CameraCharacteristics.CONTROL_AWB_AVAILABLE_MODES)
++          ?: return emptyList()
++      return WHITE_BALANCE_PRESETS.filter { modes.contains(it.mode) }
++    }
++
++  private suspend fun applyManualOptions() {
++    val camera2Control = Camera2CameraControl.from(camera.cameraControl)
++    val exposure = manualExposure
++    val focusDiopters = manualFocusDiopters
++    val whiteBalanceMode = manualWhiteBalanceMode
++    if (exposure == null && focusDiopters == null && whiteBalanceMode == null) {
++      camera2Control.clearCaptureRequestOptions().await()
++      return
++    }
++    val builder = CaptureRequestOptions.Builder()
++    if (exposure != null) {
++      builder
++        .setCaptureRequestOption(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_OFF)
++        .setCaptureRequestOption(CaptureRequest.SENSOR_SENSITIVITY, exposure.second)
++        .setCaptureRequestOption(CaptureRequest.SENSOR_EXPOSURE_TIME, exposure.first)
++    }
++    if (focusDiopters != null) {
++      builder
++        .setCaptureRequestOption(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_OFF)
++        .setCaptureRequestOption(CaptureRequest.LENS_FOCUS_DISTANCE, focusDiopters)
++    }
++    if (whiteBalanceMode != null) {
++      builder.setCaptureRequestOption(CaptureRequest.CONTROL_AWB_MODE, whiteBalanceMode)
++    }
++    camera2Control.setCaptureRequestOptions(builder.build()).await()
++  }
+ 
+   override val isConnected: Boolean
+     get() = cameraState?.type == CameraState.Type.OPEN
+@@ -89,13 +157,18 @@ class HybridCameraController(
+   override val isSmoothAutoFocusEnabled: Boolean
+     get() = false
+ 
+-  // TODO: CameraX only supports continuous AE/AF/AWB
++  // CameraX only supports continuous AE/AF/AWB; manual focus and white balance come from Camera2 interop.
+   override val focusMode: FocusMode
+-    get() = FocusMode.CONTINUOUS_AUTO_FOCUS
++    get() = if (manualFocusDiopters != null) FocusMode.LOCKED else FocusMode.CONTINUOUS_AUTO_FOCUS
+   override val exposureMode: ExposureMode
+     get() = ExposureMode.CONTINUOUS_AUTO_EXPOSURE
+   override val whiteBalanceMode: WhiteBalanceMode
+-    get() = WhiteBalanceMode.CONTINUOUS_AUTO_WHITE_BALANCE
++    get() =
++      if (manualWhiteBalanceMode != null) {
++        WhiteBalanceMode.LOCKED
++      } else {
++        WhiteBalanceMode.CONTINUOUS_AUTO_WHITE_BALANCE
++      }
+ 
+   override fun configure(config: CameraControllerConfiguration): Promise<Unit> {
+     return Promise.async {
+@@ -187,6 +260,13 @@ class HybridCameraController(
+       camera.cameraControl
+         .cancelFocusAndMetering()
+         .await()
++      if (manualFocusDiopters != null || manualWhiteBalanceMode != null) {
++        manualFocusDiopters = null
++        manualWhiteBalanceMode = null
++        currentLensPosition = 0.0
++        currentWhiteBalanceGains = WhiteBalanceGains(0.0, 0.0, 0.0)
++        applyManualOptions()
++      }
+     }
+   }
+ 
+@@ -282,46 +362,74 @@ class HybridCameraController(
+     return Promise.resolved()
+   }
+ 
+-  // TODO: Once CameraX implements locking Focus to a custom lens position, implement this:
+   override val lensPosition: Double
+-    get() = 0.0
++    get() = currentLensPosition
+ 
++  // `lensPosition` follows the iOS convention: 0 = closest focus, 1 = infinity.
+   override fun setFocusLocked(lensPosition: Double): Promise<Unit> {
+-    throw Error(
+-      "Setting Focus Lens Position is not yet supported on Android! " +
+-        "You can use AF metering locks (`focusTo(point, { modes: ['AF'], adaptiveness: 'locked' })`) instead.",
+-    )
++    return Promise.async {
++      if (!supportsManualFocus) throw Error("Manual focus is unavailable on this camera.")
++      if (!lensPosition.isFinite()) throw Error("Manual focus position must be a finite number.")
++      val position = lensPosition.coerceIn(0.0, 1.0)
++      manualFocusDiopters = ((1.0 - position) * minimumFocusDistance).toFloat()
++      applyManualOptions()
++      currentLensPosition = position
++    }
+   }
+ 
+   override fun lockCurrentFocus(): Promise<Unit> {
+     throw Error(
+-      "Setting Focus Lens Position is not yet supported on Android! " +
+-        "You can use AF metering locks (`focusTo(point, { modes: ['AF'], adaptiveness: 'locked' })`) instead.",
++      "Locking the current focus is not supported on Android! " +
++        "Use `setFocusLocked(lensPosition)` or AF metering locks (`focusTo(point, { modes: ['AF'], adaptiveness: 'locked' })`) instead.",
+     )
+   }
+ 
+-  // TODO: Once CameraX implements locking Exposure to custom duration/ISO, implement this:
++  // Sensor ranges are exposed in seconds/ISO and converted to Camera2's nanoseconds/integer values.
+   override val minExposureDuration: Double
+-    get() = 0.0
++    get() = (exposureTimeRange?.lower ?: 0L) / 1_000_000_000.0
+   override val maxExposureDuration: Double
+-    get() = 0.0
++    get() = (exposureTimeRange?.upper ?: 0L) / 1_000_000_000.0
+   override val minISO: Double
+-    get() = 0.0
++    get() = (isoRange?.lower ?: 0).toDouble()
+   override val maxISO: Double
+-    get() = 0.0
++    get() = (isoRange?.upper ?: 0).toDouble()
+   override val iso: Double
+-    get() = 0.0
++    get() = currentIso
+   override val exposureDuration: Double
+-    get() = 0.0
++    get() = currentExposureDurationSeconds
+ 
+   override fun setExposureLocked(
+     duration: Double,
+     iso: Double,
+   ): Promise<Unit> {
+-    throw Error(
+-      "Locking Exposure to manual duration/ISO values is not yet supported on Android! " +
+-        "You can use Exposure Bias (`setExposureBias(...)`) or AE metering locks (`focusTo(point, { modes: ['AE'], adaptiveness: 'locked' })`) instead.",
+-    )
++    return Promise.async {
++      if (duration == 0.0 && iso == 0.0) {
++        manualExposure = null
++        applyManualOptions()
++        currentExposureDurationSeconds = 0.0
++        currentIso = 0.0
++        return@async
++      }
++
++      val supportedIsoRange = isoRange ?: throw Error("Manual ISO is unavailable on this camera.")
++      val supportedDurationRange =
++        exposureTimeRange ?: throw Error("Manual exposure time is unavailable on this camera.")
++      if (!duration.isFinite() || !iso.isFinite()) {
++        throw Error("Manual exposure values must be finite numbers.")
++      }
++      val durationNanos = (duration * 1_000_000_000.0).roundToLong()
++      val isoValue = iso.roundToInt()
++      if (durationNanos !in supportedDurationRange.lower..supportedDurationRange.upper ||
++        isoValue !in supportedIsoRange.lower..supportedIsoRange.upper
++      ) {
++        throw Error("Manual exposure values are outside this camera's supported ranges.")
++      }
++
++      manualExposure = durationNanos to isoValue
++      applyManualOptions()
++      currentExposureDurationSeconds = durationNanos / 1_000_000_000.0
++      currentIso = isoValue.toDouble()
++    }
+   }
+ 
+   override fun lockCurrentExposure(): Promise<Unit> {
+@@ -331,28 +439,84 @@ class HybridCameraController(
+     )
+   }
+ 
+-  // TODO: Once CameraX implements locking AWB to custom White Balance Gains, implement this:
++  // Android exposes white balance as AWB presets; gains are mapped to the closest preset.
+   override val whiteBalanceGains: WhiteBalanceGains
+-    get() = WhiteBalanceGains(0.0, 0.0, 0.0)
++    get() = currentWhiteBalanceGains
+ 
+   override fun convertWhiteBalanceTemperatureAndTintValues(whiteBalanceTemperatureAndTint: WhiteBalanceTemperatureAndTint): WhiteBalanceGains {
+-    throw Error(
+-      "Locking White Balance Gains is not yet supported on Android! " +
+-        "You can use AWB metering locks (`focusTo(point, { modes: ['AWB'], adaptiveness: 'locked' })`) instead.",
+-    )
++    val temperature = whiteBalanceTemperatureAndTint.temperature
++    if (!temperature.isFinite()) throw Error("White balance temperature must be a finite number.")
++    return illuminantGains(temperature)
+   }
+ 
+   override fun setWhiteBalanceLocked(whiteBalanceGains: WhiteBalanceGains): Promise<Unit> {
+-    throw Error(
+-      "Locking White Balance Gains is not yet supported on Android! " +
+-        "You can use AWB metering locks (`focusTo(point, { modes: ['AWB'], adaptiveness: 'locked' })`) instead.",
+-    )
++    return Promise.async {
++      val presets = availableWhiteBalancePresets
++      if (presets.size < 2) throw Error("Manual white balance is unavailable on this camera.")
++      if (!whiteBalanceGains.redGain.isFinite() ||
++        !whiteBalanceGains.blueGain.isFinite() ||
++        whiteBalanceGains.redGain <= 0.0 ||
++        whiteBalanceGains.blueGain <= 0.0
++      ) {
++        throw Error("White balance gains must be positive finite numbers.")
++      }
++      val requestedWarmth = ln(whiteBalanceGains.blueGain / whiteBalanceGains.redGain)
++      val preset =
++        presets.minByOrNull { candidate ->
++          val gains = illuminantGains(candidate.kelvin)
++          abs(ln(gains.blueGain / gains.redGain) - requestedWarmth)
++        } ?: throw Error("Manual white balance is unavailable on this camera.")
++      manualWhiteBalanceMode = preset.mode
++      applyManualOptions()
++      currentWhiteBalanceGains = illuminantGains(preset.kelvin)
++    }
+   }
+ 
+   override fun lockCurrentWhiteBalance(): Promise<Unit> {
+     throw Error(
+-      "Locking White Balance Gains is not yet supported on Android! " +
+-        "You can use AWB metering locks (`focusTo(point, { modes: ['AWB'], adaptiveness: 'locked' })`) instead.",
++      "Locking the current white balance is not supported on Android! " +
++        "Use `setWhiteBalanceLocked(gains)` or AWB metering locks (`focusTo(point, { modes: ['AWB'], adaptiveness: 'locked' })`) instead.",
+     )
+   }
+ }
++
++private data class WhiteBalancePreset(
++  val mode: Int,
++  val kelvin: Double,
++)
++
++private val WHITE_BALANCE_PRESETS =
++  listOf(
++    WhiteBalancePreset(CaptureRequest.CONTROL_AWB_MODE_INCANDESCENT, 2_700.0),
++    WhiteBalancePreset(CaptureRequest.CONTROL_AWB_MODE_WARM_FLUORESCENT, 3_500.0),
++    WhiteBalancePreset(CaptureRequest.CONTROL_AWB_MODE_FLUORESCENT, 4_200.0),
++    WhiteBalancePreset(CaptureRequest.CONTROL_AWB_MODE_DAYLIGHT, 5_500.0),
++    WhiteBalancePreset(CaptureRequest.CONTROL_AWB_MODE_CLOUDY_DAYLIGHT, 6_500.0),
++    WhiteBalancePreset(CaptureRequest.CONTROL_AWB_MODE_SHADE, 7_500.0),
++  )
++
++/**
++ * Gains that neutralize an illuminant of the given color temperature, normalized so every
++ * channel is >= 1 (the app clamps gains to [1, maxWhiteBalanceGain]).
++ */
++private fun illuminantGains(kelvin: Double): WhiteBalanceGains {
++  val t = kelvin.coerceIn(1_000.0, 40_000.0) / 100.0
++  val red = if (t <= 66.0) 255.0 else 329.698727446 * (t - 60.0).pow(-0.1332047592)
++  val green =
++    if (t <= 66.0) {
++      99.4708025861 * ln(t) - 161.1195681661
++    } else {
++      288.1221695283 * (t - 60.0).pow(-0.0755148492)
++    }
++  val blue =
++    when {
++      t >= 66.0 -> 255.0
++      t <= 19.0 -> 0.0
++      else -> 138.5177312231 * ln(t - 10.0) - 305.0447927307
++    }
++  val r = (red.coerceIn(0.0, 255.0) / 255.0).coerceAtLeast(0.2)
++  val g = (green.coerceIn(0.0, 255.0) / 255.0).coerceAtLeast(0.2)
++  val b = (blue.coerceIn(0.0, 255.0) / 255.0).coerceAtLeast(0.2)
++  val brightest = maxOf(r, g, b)
++  return WhiteBalanceGains(redGain = brightest / r, blueGain = brightest / b, greenGain = brightest / g)
++}
+diff --git a/node_modules/react-native-vision-camera/android/src/main/java/com/margelo/nitro/camera/hybrids/inputs/HybridCameraDevice.kt b/node_modules/react-native-vision-camera/android/src/main/java/com/margelo/nitro/camera/hybrids/inputs/HybridCameraDevice.kt
+index a00188f..7a254b0 100644
+--- a/node_modules/react-native-vision-camera/android/src/main/java/com/margelo/nitro/camera/hybrids/inputs/HybridCameraDevice.kt
++++ b/node_modules/react-native-vision-camera/android/src/main/java/com/margelo/nitro/camera/hybrids/inputs/HybridCameraDevice.kt
+@@ -61,6 +61,34 @@ class HybridCameraDevice(
+ ) : HybridCameraDeviceSpec(),
+   NativeCameraDevice {
+   private val cameraCharacteristics = cameraInfo.cameraCharacteristicsOrNull
++  private val supportsManualSensor by lazy {
++    val availableCapabilities =
++      cameraCharacteristics?.get(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES)
++    availableCapabilities?.contains(
++      CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_MANUAL_SENSOR,
++    ) == true &&
++      cameraCharacteristics?.get(CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE) != null &&
++      cameraCharacteristics?.get(CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE) != null
++  }
++  private val supportsManualFocus by lazy {
++    (cameraCharacteristics?.get(CameraCharacteristics.LENS_INFO_MINIMUM_FOCUS_DISTANCE) ?: 0f) > 0f &&
++      cameraCharacteristics
++        ?.get(CameraCharacteristics.CONTROL_AF_AVAILABLE_MODES)
++        ?.contains(CameraCharacteristics.CONTROL_AF_MODE_OFF) == true
++  }
++  private val supportedWhiteBalancePresetCount by lazy {
++    val presets =
++      intArrayOf(
++        CameraCharacteristics.CONTROL_AWB_MODE_INCANDESCENT,
++        CameraCharacteristics.CONTROL_AWB_MODE_WARM_FLUORESCENT,
++        CameraCharacteristics.CONTROL_AWB_MODE_FLUORESCENT,
++        CameraCharacteristics.CONTROL_AWB_MODE_DAYLIGHT,
++        CameraCharacteristics.CONTROL_AWB_MODE_CLOUDY_DAYLIGHT,
++        CameraCharacteristics.CONTROL_AWB_MODE_SHADE,
++      )
++    val modes = cameraCharacteristics?.get(CameraCharacteristics.CONTROL_AWB_AVAILABLE_MODES)
++    presets.count { modes?.contains(it) == true }
++  }
+   private val previewCapabilities by lazy {
+     Preview.getPreviewCapabilities(cameraInfo)
+   }
+@@ -125,16 +153,16 @@ class HybridCameraDevice(
+   override val supportsWhiteBalanceMetering: Boolean
+     get() = cameraInfo.isFocusMeteringSupported(createDummyMeteringAction(FocusMeteringAction.FLAG_AWB))
+ 
+-  // TODO: CameraX doesn't support manual Focus/Exposure/WB locking...
++  // CameraX has no manual sensor API; exposure, focus and white balance go through Camera2 interop.
+   override val supportsFocusLocking: Boolean
+-    get() = false
++    get() = supportsManualFocus
+   override val supportsExposureLocking: Boolean
+-    get() = false
++    get() = supportsManualSensor
+   override val supportsWhiteBalanceLocking: Boolean
+-    get() = false
++    get() = supportedWhiteBalancePresetCount >= 2
+ 
+   override val maxWhiteBalanceGain: Double
+-    get() = 0.0
++    get() = if (supportsWhiteBalanceLocking) 4.0 else 0.0
+ 
+   override val supportsExposureBias: Boolean
+     get() = cameraInfo.exposureState.isExposureCompensationSupported

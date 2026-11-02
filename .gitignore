@@ -30,8 +30,16 @@ yarn-error.*
 .DS_Store
 *.pem
 
+# env files
+.env
+.env.*
+!.env.example
+
 # local env files
 .env*.local
+
+# Firebase config with Android credentials (injected on EAS via GOOGLE_SERVICES_JSON file env var)
+google-services.json
 
 # typescript
 *.tsbuildinfo

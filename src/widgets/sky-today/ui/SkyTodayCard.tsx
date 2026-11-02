@@ -2,7 +2,9 @@ import { Lucide } from '@react-native-vector-icons/lucide';
 import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 
 import type { DeviceLocation } from '../../../features/device-location/index.ts';
+import { getEventTypeInfo } from '../../../features/astronomical-events/index.ts';
 import { useSkyToday, type SkyTodayItem } from '../../../features/sky-guide/index.ts';
+import type { AstronomicalEvent } from '../../../shared/api/index.ts';
 import { theme } from '../../../shared/config/index.ts';
 
 export interface SkyTodayCardProps {
@@ -10,6 +12,10 @@ export interface SkyTodayCardProps {
   location: DeviceLocation | null;
   locationMessage: string | null;
   onRetryLocation(): void;
+  /** Curated events listed inside the card; the section is hidden when there are none. */
+  events?: AstronomicalEvent[];
+  onOpenEvent?(eventId: string): void;
+  onOpenEvents?(): void;
 }
 
 export function SkyTodayCard({
@@ -17,17 +23,33 @@ export function SkyTodayCard({
   location,
   locationMessage,
   onRetryLocation,
+  events = [],
+  onOpenEvent,
+  onOpenEvents,
 }: SkyTodayCardProps) {
   const sky = useSkyToday(accessToken, location);
 
   return (
     <View className="gap-4 rounded-card border border-border bg-surface p-5">
       <View className="gap-1">
-        <View className="flex-row items-center gap-2">
-          <Lucide color={theme.colors.accent} name="telescope" size={16} />
-          <Text className="font-label text-[11px] uppercase tracking-[2px] text-accent">
-            Hoje no seu céu
-          </Text>
+        <View className="flex-row items-center justify-between">
+          <View className="flex-row items-center gap-2">
+            <Lucide color={theme.colors.accent} name="telescope" size={16} />
+            <Text className="font-label text-[11px] uppercase tracking-[2px] text-accent">
+              Hoje no seu céu
+            </Text>
+          </View>
+          {onOpenEvents ? (
+            <Pressable
+              accessibilityLabel="Ver agenda de eventos astronômicos"
+              accessibilityRole="button"
+              className="flex-row items-center gap-1 active:opacity-80"
+              onPress={onOpenEvents}
+            >
+              <Text className="font-label text-xs text-accent">Agenda</Text>
+              <Lucide color={theme.colors.accent} name="chevron-right" size={16} />
+            </Pressable>
+          ) : null}
         </View>
         <Text className="font-body text-xs leading-4 text-muted">
           Horários calculados para a sua localização. Direções em relação ao norte verdadeiro.
@@ -68,6 +90,41 @@ export function SkyTodayCard({
           ))}
         </View>
       )}
+
+      {events.length > 0 && onOpenEvent ? (
+        <View className="gap-3 border-t border-border pt-4">
+          <Text className="font-label text-[11px] uppercase tracking-[2px] text-muted">
+            Eventos especiais
+          </Text>
+          {events.map((event) => {
+            const config = getEventTypeInfo(event.type);
+            return (
+              <Pressable
+                key={event.id}
+                accessibilityLabel={`Abrir detalhes de ${event.title}`}
+                accessibilityRole="button"
+                className="flex-row items-center gap-3 active:opacity-80"
+                onPress={() => onOpenEvent(event.id)}
+              >
+                <View className="h-10 w-10 items-center justify-center rounded-full bg-surface-2">
+                  <Lucide color={config.color} name={config.icon} size={18} />
+                </View>
+                <View className="flex-1 gap-0.5">
+                  <Text className="font-label text-sm text-ink" numberOfLines={1}>
+                    {event.title}
+                  </Text>
+                  <Text className="font-body text-xs text-muted">
+                    {new Date(event.startsAt).toLocaleDateString('pt-BR', {
+                      day: '2-digit',
+                      month: 'short',
+                    })}
+                  </Text>
+                </View>
+              </Pressable>
+            );
+          })}
+        </View>
+      ) : null}
     </View>
   );
 }

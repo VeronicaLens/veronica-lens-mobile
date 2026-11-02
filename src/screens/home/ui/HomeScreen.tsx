@@ -17,10 +17,8 @@ export function HomeScreen() {
       accessToken={auth.session.accessToken}
       displayName={displayName ?? auth.session.user.displayName}
       email={auth.session.user.email}
-      onOpenCamera={() => router.navigate('/camera')}
       onOpenEvent={(eventId) => router.push(`/events/${eventId}`)}
       onOpenEvents={() => router.push('/events')}
-      onOpenHistory={() => router.navigate('/history')}
       onOpenConditionSimulation={(location) =>
         router.push({
           pathname: '/conditions',

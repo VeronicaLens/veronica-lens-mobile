@@ -4,8 +4,11 @@ export {
   describeFactor,
   describeSky,
   describeVisibility,
+  isNightHour,
+  skyIconFor,
   toConditionHour,
   type ConditionHour,
+  type SkyIconName,
 } from './lib/condition-hour.ts';
 export {
   parseConditionObserverParams,

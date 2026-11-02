@@ -1,4 +1,4 @@
-export { deleteAccount } from './api/profile-api.ts';
+export { deleteAccount, getProfile } from './api/profile-api.ts';
 export {
   ProfileDisplayNameProvider,
   useProfileDisplayName,

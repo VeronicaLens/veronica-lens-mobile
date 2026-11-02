@@ -10,6 +10,7 @@ import {
 } from '../../features/auth/index.ts';
 import { useNotificationBootstrap } from '../../features/notifications/index.ts';
 import { ProfileDisplayNameProvider } from '../../features/profile/index.ts';
+import { useSkyAlertScheduler } from '../../features/sky-alerts/index.ts';
 import { AuthPage } from '../../screens/auth/index.ts';
 import { theme } from '../../shared/config/index.ts';
 import { LoadingScreen } from '../../widgets/loading-screen/index.ts';
@@ -34,6 +35,9 @@ export function TabsLayout() {
     isAnonymous: auth.status === 'anonymous',
     onOpenEvent: (eventId) => router.push(`/events/${eventId}`),
   });
+  useSkyAlertScheduler(
+    auth.status === 'authenticated' ? (auth.session?.accessToken ?? null) : null,
+  );
   useEffect(() => {
     const handleUrl = (url: string | null) => setRecovery(getRecoverySession(url));
     void Linking.getInitialURL().then(handleUrl);

@@ -27,6 +27,8 @@ export async function getGoogleIdToken(): Promise<string> {
 
   try {
     await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
+    // Clearing the cached account makes Google show the account chooser instead of reusing the last one.
+    await GoogleSignin.signOut().catch(() => undefined);
     const result = await GoogleSignin.signIn();
     const idToken = result.data?.idToken;
     if (!idToken) {

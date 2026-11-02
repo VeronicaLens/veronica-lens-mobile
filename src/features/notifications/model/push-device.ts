@@ -79,7 +79,7 @@ export async function refreshStoredPushDevice(accessToken: string): Promise<void
   }
 }
 
-async function ensureAlertsChannel(): Promise<void> {
+export async function ensureAlertsChannel(): Promise<void> {
   if (Platform.OS !== 'android') return;
   await Notifications.setNotificationChannelAsync(ASTRONOMY_ALERTS_CHANNEL_ID, {
     name: 'Alertas astronômicos',

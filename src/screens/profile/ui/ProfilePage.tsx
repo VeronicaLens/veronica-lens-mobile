@@ -26,6 +26,12 @@ import {
   categorizeObservation,
   useObservationHistory,
 } from '../../../features/observation-history/index.ts';
+import {
+  SKY_ALERT_LEAD_OPTIONS,
+  leadLabel,
+  updateSkyAlertPreferences,
+  useSkyAlertPreferences,
+} from '../../../features/sky-alerts/index.ts';
 import type { AppLanguage, MeasurementUnit, Profile } from '../../../shared/api/index.ts';
 import { theme } from '../../../shared/config/index.ts';
 import { Button, TextField } from '../../../shared/ui/index.ts';
@@ -180,6 +186,7 @@ export function ProfilePage({
 }: ProfilePageProps) {
   const { profile, loading, saving, error, load, save, saveAvatar } = useProfile(accessToken);
   const history = useObservationHistory(accessToken);
+  const skyAlerts = useSkyAlertPreferences(accessToken);
   const [editing, setEditing] = useState(false);
   const [photoMessage, setPhotoMessage] = useState<string | null>(null);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
@@ -225,6 +232,7 @@ export function ProfilePage({
       setNotificationsEnabled(value);
       onSaved(updated);
       if (!value) await deactivateStoredPushDevice(accessToken);
+      await updateSkyAlertPreferences({ enabled: value });
     }
   };
 
@@ -517,10 +525,49 @@ export function ProfilePage({
                     icon="bell"
                     iconColor={theme.colors.info}
                     title="Notificações"
-                    subtitle="Eventos e janelas ideais"
+                    subtitle="Eventos especiais e nascer da Lua e dos planetas"
                     value={profile.notificationsEnabled}
                     onChange={(value) => void persistNotifications(value)}
                   />
+                  {profile.notificationsEnabled && skyAlerts ? (
+                    <View className="gap-2 rounded-control bg-surface px-4 py-3">
+                      <Text className="font-label text-[13px] text-ink">
+                        Avisar antes de nascer
+                      </Text>
+                      <Text className="font-body text-[10px] text-muted">
+                        Lua e planetas que nascem à noite, calculados para a sua localização.
+                      </Text>
+                      <View className="flex-row gap-2 pt-1">
+                        {SKY_ALERT_LEAD_OPTIONS.map((option) => {
+                          const selected = skyAlerts.leadMinutes === option;
+                          return (
+                            <Pressable
+                              key={option}
+                              accessibilityLabel={`Avisar ${leadLabel(option)} antes`}
+                              accessibilityRole="button"
+                              accessibilityState={{ selected }}
+                              className="rounded-pill border px-4 py-2 active:opacity-80"
+                              onPress={() =>
+                                void updateSkyAlertPreferences({ leadMinutes: option })
+                              }
+                              style={{
+                                borderColor: selected ? theme.colors.primary : theme.colors.border,
+                              }}
+                            >
+                              <Text
+                                className="font-label text-xs"
+                                style={{
+                                  color: selected ? theme.colors.accent : theme.colors.muted,
+                                }}
+                              >
+                                {leadLabel(option)}
+                              </Text>
+                            </Pressable>
+                          );
+                        })}
+                      </View>
+                    </View>
+                  ) : null}{' '}
                   <PreferenceRow
                     disabled={capturingLocation || saving}
                     icon="map-pin"

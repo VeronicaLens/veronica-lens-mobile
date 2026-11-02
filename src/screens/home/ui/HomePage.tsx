@@ -9,20 +9,17 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import {
-  getEventTypeInfo,
-  useUpcomingEvents,
-} from '../../../features/astronomical-events/index.ts';
+import { useUpcomingEvents } from '../../../features/astronomical-events/index.ts';
 import { useCurrentConditions } from '../../../features/current-conditions/index.ts';
 import { useDeviceLocation, type DeviceLocation } from '../../../features/device-location/index.ts';
-import type { AstronomicalEvent, ObservationRating } from '../../../shared/api/index.ts';
+import type { ObservationRating } from '../../../shared/api/index.ts';
 import { theme } from '../../../shared/config/index.ts';
 import { SkyTodayCard } from '../../../widgets/sky-today/index.ts';
 
 const backgroundImage = require('../../../../assets/loading-background.jpeg') as number;
 
 const EVENT_PREVIEW_PERIOD_DAYS = 30;
-const EVENT_PREVIEW_COUNT = 3;
+const EVENT_PREVIEW_COUNT = 2;
 
 const ratingConfig: Record<ObservationRating, { label: string; color: string }> = {
   good: { label: 'Boas condições', color: theme.colors.info },
@@ -34,10 +31,8 @@ export interface HomePageProps {
   accessToken: string;
   displayName: string | null;
   email: string;
-  onOpenCamera(): void;
   onOpenEvent(eventId: string): void;
   onOpenEvents(): void;
-  onOpenHistory(): void;
   onOpenConditionSimulation(location: DeviceLocation | null): void;
 }
 
@@ -45,10 +40,8 @@ export function HomePage({
   accessToken,
   displayName,
   email,
-  onOpenCamera,
   onOpenEvent,
   onOpenEvents,
-  onOpenHistory,
   onOpenConditionSimulation,
 }: HomePageProps) {
   const location = useDeviceLocation();
@@ -184,90 +177,13 @@ export function HomePage({
 
           <SkyTodayCard
             accessToken={accessToken}
+            events={upcomingEvents}
             location={location.location}
             locationMessage={location.fallbackMessage}
+            onOpenEvent={onOpenEvent}
+            onOpenEvents={onOpenEvents}
             onRetryLocation={location.retry}
           />
-
-          <View className="gap-3">
-            <View className="flex-row items-center justify-between">
-              <Text className="font-label text-[11px] uppercase tracking-[2px] text-accent">
-                Próximos eventos
-              </Text>
-              <Pressable accessibilityRole="button" onPress={onOpenEvents}>
-                <Lucide color={theme.colors.muted} name="chevron-right" size={18} />
-              </Pressable>
-            </View>
-
-            {events.loading ? (
-              <View className="flex-row items-center gap-3 rounded-card border border-border bg-surface p-5">
-                <ActivityIndicator color={theme.colors.primary} />
-                <Text className="flex-1 font-body text-sm leading-5 text-muted">
-                  Buscando próximos eventos...
-                </Text>
-              </View>
-            ) : events.error ? (
-              <Pressable
-                accessibilityRole="button"
-                className="flex-row items-center gap-3 rounded-card border border-border bg-surface p-5 active:opacity-80"
-                onPress={events.refresh}
-              >
-                <Lucide color={theme.colors.event} name="cloud-off" size={20} />
-                <Text className="flex-1 font-body text-sm leading-5 text-muted">
-                  {events.error}
-                </Text>
-              </Pressable>
-            ) : upcomingEvents.length > 0 ? (
-              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                <View className="flex-row gap-3">
-                  {upcomingEvents.map((event) => (
-                    <EventPreviewCard
-                      key={event.id}
-                      event={event}
-                      onPress={() => onOpenEvent(event.id)}
-                    />
-                  ))}
-                </View>
-              </ScrollView>
-            ) : (
-              <Pressable
-                accessibilityRole="button"
-                className="rounded-card border border-border bg-surface p-5 active:opacity-75"
-                onPress={onOpenEvents}
-              >
-                <Text className="font-body text-sm leading-5 text-muted">
-                  Nenhum evento especial agendado por enquanto. Eclipses e chuvas de meteoros
-                  aparecem aqui quando forem publicados.
-                </Text>
-              </Pressable>
-            )}
-          </View>
-
-          <View className="gap-3">
-            <Text className="font-label text-[11px] uppercase tracking-[2px] text-accent">
-              Acesso rápido
-            </Text>
-            <View className="flex-row gap-3">
-              <QuickAccessCard
-                description="Registre o céu ao seu redor."
-                icon="camera"
-                label="Câmera"
-                onPress={onOpenCamera}
-              />
-              <QuickAccessCard
-                description="Acompanhe eclipses, chuvas de meteoros e mais."
-                icon="calendar-days"
-                label="Eventos"
-                onPress={onOpenEvents}
-              />
-              <QuickAccessCard
-                description="Reveja suas astrofotos por dia, mês ou ano."
-                icon="images"
-                label="Galeria"
-                onPress={onOpenHistory}
-              />
-            </View>
-          </View>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -292,65 +208,6 @@ function ConditionStat({
       </Text>
     </View>
   );
-}
-
-function EventPreviewCard({ event, onPress }: { event: AstronomicalEvent; onPress(): void }) {
-  const config = getEventTypeInfo(event.type);
-  const date = new Date(event.startsAt);
-
-  return (
-    <Pressable
-      accessibilityLabel={`Abrir detalhes de ${event.title}`}
-      accessibilityRole="button"
-      className="w-40 gap-3 rounded-card border border-border bg-surface p-4 active:opacity-80"
-      onPress={onPress}
-    >
-      <View className="h-11 w-11 items-center justify-center rounded-full bg-surface-2">
-        <Lucide color={config.color} name={config.icon} size={20} />
-      </View>
-      <View className="gap-1">
-        <Text className="font-label text-sm text-ink" numberOfLines={1}>
-          {event.title}
-        </Text>
-        <Text className="font-body text-xs text-muted">{formatDate(date)}</Text>
-      </View>
-    </Pressable>
-  );
-}
-
-function QuickAccessCard({
-  description,
-  icon,
-  label,
-  onPress,
-}: {
-  description: string;
-  icon: LucideIconName;
-  label: string;
-  onPress(): void;
-}) {
-  return (
-    <Pressable
-      accessibilityLabel={label}
-      accessibilityRole="button"
-      className="flex-1 gap-3 rounded-card border border-border bg-surface p-4 active:opacity-80"
-      onPress={onPress}
-    >
-      <View className="h-10 w-10 items-center justify-center rounded-full bg-surface-2">
-        <Lucide color={theme.colors.accent} name={icon} size={18} />
-      </View>
-      <View className="gap-1">
-        <Text className="font-label text-xs text-ink">{label}</Text>
-        <Text className="font-body text-[11px] leading-4 text-muted" numberOfLines={2}>
-          {description}
-        </Text>
-      </View>
-    </Pressable>
-  );
-}
-
-function formatDate(value: Date): string {
-  return new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: 'short' }).format(value);
 }
 
 function formatTime(value: Date): string {

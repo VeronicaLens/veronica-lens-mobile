@@ -567,7 +567,7 @@ export function ProfilePage({
                         })}
                       </View>
                     </View>
-                  ) : null}{' '}
+                  ) : null}
                   <PreferenceRow
                     disabled={capturingLocation || saving}
                     icon="map-pin"

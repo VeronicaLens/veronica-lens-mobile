@@ -75,15 +75,11 @@ jobs:
             cat "$RUNNER_TEMP/install-qr.txt"
           fi
 
-          npx --yes eas-cli@latest build:download \
-            --build-id "$BUILD_ID" \
-            --non-interactive \
-            --json \
-            > "$RUNNER_TEMP/eas-download.json"
-
-          BUILD_PATH="$(node -e "const result = require(process.argv[1]); if (!result?.path) process.exit(1); process.stdout.write(result.path)" "$RUNNER_TEMP/eas-download.json")"
+          ARTIFACT_URL="$(node -e "const [build] = require(process.argv[1]); if (!build?.artifacts?.buildUrl) throw new Error('Missing EAS build artifact URL'); process.stdout.write(build.artifacts.buildUrl)" "$RUNNER_TEMP/eas-build.json")"
           mkdir -p artifacts
-          cp "$BUILD_PATH" "artifacts/veronica-lens-${GITHUB_REF_NAME}-${GITHUB_SHA:0:7}.${EXTENSION}"
+          curl --fail --location --retry 3 \
+            --output "artifacts/veronica-lens-${GITHUB_REF_NAME}-${GITHUB_SHA:0:7}.${EXTENSION}" \
+            "$ARTIFACT_URL"
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
 

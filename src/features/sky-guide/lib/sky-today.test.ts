@@ -61,6 +61,14 @@ describe('summarizeSkyToday', () => {
     assert.equal(byId.moon?.nextTransit, null);
   });
 
+  it('keeps the full ordered timeline for day-by-day browsing', () => {
+    assert.deepEqual(
+      byId.moon?.timeline.map((entry) => entry.kind),
+      ['transit', 'set'],
+    );
+    assert.equal(byId.jupiter?.timeline.length, 0);
+  });
+
   it('handles objects that never cross the horizon', () => {
     assert.equal(byId.jupiter?.status, 'always-up');
     assert.equal(byId.saturn?.status, 'never-up');

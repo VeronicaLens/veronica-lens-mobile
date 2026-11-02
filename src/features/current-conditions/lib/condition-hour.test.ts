@@ -7,6 +7,8 @@ import {
   describeFactor,
   describeSky,
   describeVisibility,
+  isNightHour,
+  skyIconFor,
   toConditionHour,
 } from './condition-hour.ts';
 
@@ -86,5 +88,23 @@ describe('condition hours', () => {
     assert.match(describeFactor({ code: 'wind', status: 'good' }, view), /9 km\/h/);
     assert.match(describeFactor({ code: 'darkness', status: 'poor' }, view), /Sol está acima/);
     assert.match(describeFactor({ code: 'humidity', status: 'unknown' }, view), /Sem dados/);
+  });
+});
+
+describe('sky icon and night hours', () => {
+  const base = toConditionHour(hour);
+
+  it('prefers rain, then picks an icon by cloud cover', () => {
+    assert.equal(skyIconFor({ ...base, precipitationProbabilityPercent: 70 }), 'cloud-rain');
+    assert.equal(skyIconFor({ ...base, cloudCoverPercent: 10 }), 'moon');
+    assert.equal(skyIconFor({ ...base, cloudCoverPercent: 45 }), 'cloud-moon');
+    assert.equal(skyIconFor({ ...base, cloudCoverPercent: 95 }), 'cloud');
+    assert.equal(skyIconFor({ ...base, cloudCoverPercent: null }), 'cloud-moon');
+  });
+
+  it('treats 18:00 to 05:59 local time as night', () => {
+    assert.equal(isNightHour(new Date(2026, 10, 2, 18, 0).toISOString()), true);
+    assert.equal(isNightHour(new Date(2026, 10, 2, 5, 59).toISOString()), true);
+    assert.equal(isNightHour(new Date(2026, 10, 2, 12, 0).toISOString()), false);
   });
 });

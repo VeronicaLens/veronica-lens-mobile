@@ -103,3 +103,21 @@ export function describeFactor(factor: ConditionFactor, hour: ConditionHour): st
       return `Umidade relativa de ${Math.round(hour.relativeHumidityPercent ?? 0)}%.`;
   }
 }
+
+export type SkyIconName = 'moon' | 'cloud-moon' | 'cloud' | 'cloud-rain';
+
+/** Icon summarising the hour: rain first, then how covered the sky is. */
+export function skyIconFor(hour: ConditionHour): SkyIconName {
+  if ((hour.precipitationProbabilityPercent ?? 0) >= 50) return 'cloud-rain';
+  const cloud = hour.cloudCoverPercent;
+  if (cloud === null) return 'cloud-moon';
+  if (cloud > 80) return 'cloud';
+  if (cloud > 20) return 'cloud-moon';
+  return 'moon';
+}
+
+/** Hours from 18:00 to 05:59 local time, when most observing happens. */
+export function isNightHour(observedAt: string): boolean {
+  const hour = new Date(observedAt).getHours();
+  return hour >= 18 || hour < 6;
+}

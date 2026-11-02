@@ -6,7 +6,7 @@ import { describePushRegistrationError } from './push-registration-error.ts';
 test('explains a missing Firebase configuration on Android', () => {
   assert.match(
     describePushRegistrationError(
-      new Error('Default FirebaseApp is not initialized in this process com.veronicalens'),
+      new Error('Default FirebaseApp is not initialized in this process com.veronicalens.app'),
     ),
     /Firebase\/FCM/,
   );

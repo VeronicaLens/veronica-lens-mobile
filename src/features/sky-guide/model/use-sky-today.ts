@@ -5,12 +5,18 @@ import type { DeviceLocation } from '../../device-location/index.ts';
 import { getSkyRiseSet } from '../api/rise-set-api.ts';
 import { SKY_TODAY_OBJECT_IDS, summarizeSkyToday, type SkyTodayItem } from '../lib/sky-today.ts';
 
-export function useSkyToday(accessToken: string, location: DeviceLocation | null) {
+/** dayStart null means the next 24 hours from now; otherwise the 24 hours from that instant. */
+export function useSkyToday(
+  accessToken: string,
+  location: DeviceLocation | null,
+  dayStart: Date | null = null,
+) {
   const [items, setItems] = useState<SkyTodayItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
   const guard = useRequestGuard();
+  const dayStartMs = dayStart?.getTime() ?? null;
 
   useEffect(() => {
     if (!location) return;
@@ -18,8 +24,9 @@ export function useSkyToday(accessToken: string, location: DeviceLocation | null
     const load = async () => {
       setLoading(true);
       setError(null);
+      setItems([]);
       try {
-        const now = new Date();
+        const now = dayStartMs === null ? new Date() : new Date(dayStartMs);
         const result = await getSkyRiseSet(accessToken, {
           objectIds: [...SKY_TODAY_OBJECT_IDS],
           from: now.toISOString(),
@@ -32,14 +39,14 @@ export function useSkyToday(accessToken: string, location: DeviceLocation | null
         if (guard.isCurrent(request)) setItems(summarizeSkyToday(result, now));
       } catch {
         if (guard.isCurrent(request)) {
-          setError('Não foi possível calcular o céu de hoje. Tente novamente.');
+          setError('Não foi possível calcular o céu. Tente novamente.');
         }
       } finally {
         if (guard.isCurrent(request)) setLoading(false);
       }
     };
     void load();
-  }, [accessToken, attempt, guard, location]);
+  }, [accessToken, attempt, dayStartMs, guard, location]);
 
   const refresh = useCallback(() => setAttempt((value) => value + 1), []);
   return { items, loading, error, refresh };

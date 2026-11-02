@@ -6,6 +6,13 @@ import { getEventTypeInfo } from '../../../features/astronomical-events/index.ts
 import { useSkyToday, type SkyTodayItem } from '../../../features/sky-guide/index.ts';
 import type { AstronomicalEvent } from '../../../shared/api/index.ts';
 import { theme } from '../../../shared/config/index.ts';
+import {
+  buildRowEntries,
+  formatCountdown,
+  groupForNow,
+  sortItemsForDay,
+  type RowEntry,
+} from '../lib/row-entries.ts';
 
 export interface SkyTodayCardProps {
   accessToken: string;
@@ -16,6 +23,8 @@ export interface SkyTodayCardProps {
   events?: AstronomicalEvent[];
   onOpenEvent?(eventId: string): void;
   onOpenEvents?(): void;
+  /** Local start of the day to show; null shows the next 24 hours from now. */
+  day?: Date | null;
 }
 
 export function SkyTodayCard({
@@ -26,8 +35,9 @@ export function SkyTodayCard({
   events = [],
   onOpenEvent,
   onOpenEvents,
+  day = null,
 }: SkyTodayCardProps) {
-  const sky = useSkyToday(accessToken, location);
+  const sky = useSkyToday(accessToken, location, day);
 
   return (
     <View className="gap-4 rounded-card border border-border bg-surface p-5">
@@ -36,7 +46,7 @@ export function SkyTodayCard({
           <View className="flex-row items-center gap-2">
             <Lucide color={theme.colors.accent} name="telescope" size={16} />
             <Text className="font-label text-[11px] uppercase tracking-[2px] text-accent">
-              Hoje no seu céu
+              {day ? `No céu em ${formatDay(day)}` : 'Hoje no seu céu'}
             </Text>
           </View>
           {onOpenEvents ? (
@@ -84,11 +94,7 @@ export function SkyTodayCard({
       ) : sky.items.length === 0 ? (
         <Text className="font-body text-sm text-muted">Nenhum astro disponível agora.</Text>
       ) : (
-        <View className="gap-3">
-          {sky.items.map((item) => (
-            <SkyTodayRow key={item.id} item={item} />
-          ))}
-        </View>
+        <SkyList dayMode={day !== null} items={sky.items} />
       )}
 
       {events.length > 0 && onOpenEvent ? (
@@ -129,52 +135,157 @@ export function SkyTodayCard({
   );
 }
 
-function SkyTodayRow({ item }: { item: SkyTodayItem }) {
-  const visible = item.status === 'up' || item.status === 'always-up';
+function SkyList({ items, dayMode }: { items: SkyTodayItem[]; dayMode: boolean }) {
+  if (dayMode) {
+    return (
+      <View className="gap-3">
+        {sortItemsForDay(items).map((item) => (
+          <SkyRow key={item.id} dayMode item={item} />
+        ))}
+      </View>
+    );
+  }
 
+  const groups = groupForNow(items);
   return (
-    <View className="flex-row items-center gap-3">
-      <View className="h-10 w-10 items-center justify-center rounded-full bg-surface-2">
-        <Lucide
-          color={visible ? theme.colors.accent : theme.colors.muted}
-          name={item.type === 'moon' ? 'moon' : 'orbit'}
-          size={18}
-        />
-      </View>
-      <View className="flex-1 gap-0.5">
-        <Text className="font-label text-sm text-ink">{item.name}</Text>
-        <Text className="font-body text-xs leading-4 text-muted">{describe(item)}</Text>
-      </View>
-      <Text
-        className="font-label text-[10px] uppercase tracking-[1px]"
-        style={{ color: visible ? theme.colors.info : theme.colors.muted }}
-      >
-        {visible ? 'Visível' : 'Abaixo'}
-      </Text>
+    <View className="gap-5">
+      <SkyGroup items={groups.visible} title="No céu agora" />
+      <SkyGroup items={groups.upcoming} title="Ainda abaixo do horizonte" />
+      <SkyGroup items={groups.hidden} title="Fora do alcance hoje" />
     </View>
   );
 }
 
-function describe(item: SkyTodayItem): string {
-  if (item.status === 'always-up') return 'Acima do horizonte o dia todo.';
-  if (item.status === 'never-up') return 'Não aparece no seu horizonte hoje.';
-  if (!item.nextChange) return 'Sem nascer ou pôr nas próximas 24 h.';
-
-  const verb = item.nextChange.kind === 'rise' ? 'Nasce' : 'Põe-se';
-  const change = `${verb} ${formatWhen(item.nextChange.at)} (${item.nextChange.direction})`;
-  if (item.status === 'up' && item.nextTransit) {
-    return `${change} · ponto mais alto ${formatWhen(item.nextTransit.at)}`;
-  }
-  return change;
+function SkyGroup({ items, title }: { items: SkyTodayItem[]; title: string }) {
+  if (items.length === 0) return null;
+  return (
+    <View className="gap-3">
+      <Text className="font-label text-[11px] uppercase tracking-[2px] text-muted">{title}</Text>
+      {items.map((item) => (
+        <SkyRow key={item.id} dayMode={false} item={item} />
+      ))}
+    </View>
+  );
 }
 
-function formatWhen(value: Date): string {
-  const time = new Intl.DateTimeFormat('pt-BR', { hour: '2-digit', minute: '2-digit' }).format(
-    value,
+const BODY_COLORS: Record<string, string> = {
+  moon: '#E8E6D9',
+  mercury: '#B4B4B4',
+  venus: '#F2D98D',
+  mars: '#E0674A',
+  jupiter: '#D9B38C',
+  saturn: '#E3C77A',
+};
+
+function BodyBadge({ item, dimmed }: { item: SkyTodayItem; dimmed: boolean }) {
+  const color = BODY_COLORS[item.id] ?? theme.colors.accent;
+  return (
+    <View
+      className="h-12 w-12 items-center justify-center rounded-full bg-canvas"
+      style={{ opacity: dimmed ? 0.55 : 1 }}
+    >
+      {item.type === 'moon' ? (
+        <Lucide color={color} name="moon" size={24} />
+      ) : (
+        <View className="h-6 w-6 rounded-full" style={{ backgroundColor: color }} />
+      )}
+    </View>
   );
-  const today = new Date();
-  if (value.toDateString() === today.toDateString()) return `às ${time}`;
-  const tomorrow = new Date(today.getTime() + 86_400_000);
-  if (value.toDateString() === tomorrow.toDateString()) return `amanhã às ${time}`;
-  return `${value.toLocaleDateString('pt-BR')} às ${time}`;
+}
+
+function SkyRow({ item, dayMode }: { item: SkyTodayItem; dayMode: boolean }) {
+  const visible = item.status === 'up' || item.status === 'always-up';
+  const entries = buildRowEntries(item, dayMode);
+  const note = describeStatus(item, dayMode);
+  const now = new Date();
+
+  return (
+    <View className="gap-3 rounded-control bg-surface-2 p-3">
+      <View className="flex-row items-center gap-3">
+        <BodyBadge dimmed={item.status === 'never-up'} item={item} />
+        <View className="flex-1 gap-0.5">
+          <Text className="font-display text-base text-ink">{item.name}</Text>
+          {note ? <Text className="font-body text-xs text-muted">{note}</Text> : null}
+        </View>
+        {dayMode || item.status === 'never-up' ? null : (
+          <View
+            className="rounded-pill border px-3 py-1"
+            style={{ borderColor: visible ? theme.colors.info : theme.colors.border }}
+          >
+            <Text
+              className="font-label text-[10px] uppercase tracking-[1px]"
+              style={{ color: visible ? theme.colors.info : theme.colors.muted }}
+            >
+              {visible ? 'Visível' : 'Abaixo'}
+            </Text>
+          </View>
+        )}
+      </View>
+
+      {entries.length > 0 ? (
+        <View className="flex-row gap-2">
+          {entries.map((entry) => (
+            <EntryCell
+              key={`${entry.kind}-${entry.at.getTime()}`}
+              countdown={dayMode ? null : formatCountdown(entry.at, now)}
+              entry={entry}
+            />
+          ))}
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+const ENTRY_META = {
+  rise: { label: 'Nasce', icon: 'sunrise' },
+  transit: { label: 'Mais alto', icon: 'arrow-up' },
+  set: { label: 'Põe-se', icon: 'sunset' },
+} as const;
+
+function EntryCell({ entry, countdown }: { entry: RowEntry; countdown: string | null }) {
+  const meta = ENTRY_META[entry.kind];
+  return (
+    <View className="flex-1 gap-1 rounded-control bg-canvas px-3 py-2">
+      <View className="flex-row items-center gap-1.5">
+        <Lucide color={theme.colors.accent} name={meta.icon} size={13} />
+        <Text className="font-label text-[10px] uppercase tracking-[1px] text-muted">
+          {meta.label}
+        </Text>
+      </View>
+      <Text className="font-display text-xl text-ink">{formatClock(entry.at)}</Text>
+      {entry.kind === 'transit' ? null : (
+        <View className="flex-row items-center gap-1">
+          <View style={{ transform: [{ rotate: `${entry.azimuthDegrees}deg` }] }}>
+            <Lucide color={theme.colors.info} name="arrow-up" size={13} />
+          </View>
+          <Text className="font-label text-xs text-info">{entry.direction}</Text>
+        </View>
+      )}
+      {countdown ? <Text className="font-body text-[10px] text-muted">{countdown}</Text> : null}
+    </View>
+  );
+}
+
+function describeStatus(item: SkyTodayItem, dayMode: boolean): string | null {
+  if (item.status === 'always-up') return 'Acima do horizonte o dia todo';
+  if (item.status === 'never-up') {
+    return dayMode ? 'Não aparece no seu horizonte neste dia' : 'Não aparece no seu horizonte hoje';
+  }
+  if (item.timeline.length === 0 && !item.nextChange) {
+    return dayMode ? 'Sem nascer ou pôr neste dia' : 'Sem nascer ou pôr nas próximas 24 h';
+  }
+  return null;
+}
+
+function formatClock(value: Date): string {
+  return new Intl.DateTimeFormat('pt-BR', { hour: '2-digit', minute: '2-digit' }).format(value);
+}
+
+function formatDay(value: Date): string {
+  return new Intl.DateTimeFormat('pt-BR', {
+    weekday: 'short',
+    day: '2-digit',
+    month: '2-digit',
+  }).format(value);
 }

@@ -13,6 +13,8 @@ export const SKY_TODAY_OBJECT_IDS = [
   'saturn',
 ] as const;
 
+export type SkyTodayTimelineEvent = SkyTodayEvent & { kind: 'rise' | 'transit' | 'set' };
+
 export type SkyTodayStatus = 'up' | 'down' | 'always-up' | 'never-up';
 
 export interface SkyTodayEvent {
@@ -31,6 +33,8 @@ export interface SkyTodayItem {
   nextChange: (SkyTodayEvent & { kind: 'rise' | 'set' }) | null;
   /** Next moment the object reaches its highest point, when it is still ahead. */
   nextTransit: SkyTodayEvent | null;
+  /** Every rise, transit and set from the start of the window, in time order. */
+  timeline: SkyTodayTimelineEvent[];
 }
 
 const COMPASS_POINTS = ['N', 'NE', 'L', 'SE', 'S', 'SO', 'O', 'NO'] as const;
@@ -48,10 +52,10 @@ export function summarizeSkyToday(data: SkyRiseSetData, now: Date): SkyTodayItem
 function summarizeObject(object: SkyRiseSetObject, now: Date): SkyTodayItem {
   const base = { id: object.id, name: object.name, type: object.type };
   if (object.horizon === 'always-above') {
-    return { ...base, status: 'always-up', nextChange: null, nextTransit: null };
+    return { ...base, status: 'always-up', nextChange: null, nextTransit: null, timeline: [] };
   }
   if (object.horizon === 'always-below') {
-    return { ...base, status: 'never-up', nextChange: null, nextTransit: null };
+    return { ...base, status: 'never-up', nextChange: null, nextTransit: null, timeline: [] };
   }
 
   const upcoming = object.events
@@ -70,6 +74,9 @@ function summarizeObject(object: SkyRiseSetObject, now: Date): SkyTodayItem {
       ? { ...toSkyTodayEvent(change.event, change.at), kind: change.event.type as 'rise' | 'set' }
       : null,
     nextTransit: transit ? toSkyTodayEvent(transit.event, transit.at) : null,
+    timeline: object.events
+      .map((event) => ({ ...toSkyTodayEvent(event, new Date(event.at)), kind: event.type }))
+      .sort((a, b) => a.at.getTime() - b.at.getTime()),
   };
 }
 

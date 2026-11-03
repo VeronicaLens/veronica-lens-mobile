@@ -1,6 +1,6 @@
 import { Lucide, type LucideIconName } from '@react-native-vector-icons/lucide';
 import type { ReactNode } from 'react';
-import { Pressable, ScrollView, Text, View } from 'react-native';
+import { KeyboardAvoidingView, Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { theme } from '../../../../shared/config/index.ts';
@@ -18,26 +18,29 @@ export function AccountScreenLayout({
 }) {
   return (
     <SafeAreaView className="flex-1 bg-canvas" edges={['top', 'left', 'right']}>
-      <ScrollView
-        contentContainerClassName="gap-6 px-5 pb-10 pt-5"
-        keyboardShouldPersistTaps="handled"
-      >
-        <View className="gap-2">
-          <Pressable
-            accessibilityLabel="Voltar ao perfil"
-            accessibilityRole="button"
-            className="mb-1 h-10 w-10 items-center justify-center rounded-full bg-surface active:opacity-80"
-            onPress={onBack}
-          >
-            <Lucide color={theme.colors.text} name="chevron-left" size={19} />
-          </Pressable>
-          <Text accessibilityRole="header" className="font-display text-[28px] text-ink">
-            {title}
-          </Text>
-          <Text className="font-body text-sm leading-5 text-muted">{subtitle}</Text>
-        </View>
-        {children}
-      </ScrollView>
+      {/* Edge-to-edge Android no longer resizes the window for the keyboard. */}
+      <KeyboardAvoidingView behavior="padding" className="flex-1">
+        <ScrollView
+          contentContainerClassName="gap-6 px-5 pb-10 pt-5"
+          keyboardShouldPersistTaps="handled"
+        >
+          <View className="gap-2">
+            <Pressable
+              accessibilityLabel="Voltar ao perfil"
+              accessibilityRole="button"
+              className="mb-1 h-10 w-10 items-center justify-center rounded-full bg-surface active:opacity-80"
+              onPress={onBack}
+            >
+              <Lucide color={theme.colors.text} name="chevron-left" size={19} />
+            </Pressable>
+            <Text accessibilityRole="header" className="font-display text-[28px] text-ink">
+              {title}
+            </Text>
+            <Text className="font-body text-sm leading-5 text-muted">{subtitle}</Text>
+          </View>
+          {children}
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }

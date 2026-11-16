@@ -8,6 +8,7 @@ import {
   type GyroscopeMeasurement,
   type MagnetometerMeasurement,
 } from 'expo-sensors';
+import { Platform } from 'react-native';
 
 import type {
   DeviceOrientationSource,
@@ -23,6 +24,8 @@ interface RemovableSubscription {
 
 export class ExpoOrientationSource implements DeviceOrientationSource {
   async requestPermission(): Promise<boolean> {
+    if (Platform.OS === 'android') return true;
+
     const permission = await DeviceMotion.requestPermissionsAsync();
     return permission.granted;
   }
